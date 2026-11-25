@@ -68,6 +68,7 @@ export const PAGES = Object.freeze([
   { slug: "projects-and-desktops", title: "Projects & Desktops" },
   { slug: "exporting", title: "Exporting to Other Tools" },
   { slug: "gallery", title: "The Gallery" },
+  { slug: "private-stores", title: "Private Stores" },
   { slug: "web", title: "Chip Hippo in the Browser" },
   { slug: "settings", title: "Settings" },
   { slug: "keyboard-shortcuts", title: "Keyboard Shortcuts" },

@@ -28,8 +28,8 @@ import { dirname, join } from "node:path";
 
 import { resetDom } from "./jsdom-setup.js";
 import {
-  browseGallery,
   droppedSummary,
+  galleryAccess,
   galleryPrepare,
   galleryRevisions,
 } from "../components/gallery-open.js";
@@ -74,31 +74,31 @@ function deps(settings = {}) {
   };
 }
 
-test("first Browse asks once; Allow is stored and opens the window", async () => {
+// The access question — asked by a gallery link (`chiphippo://gallery/<id>`)
+// the first time; the Browse window never asks (its Gallery tab is there only
+// while access is on).
+test("a first gallery link asks once; Allow is stored, and never asked again", async () => {
   resetDom();
   const d = deps();
-  const run = browseGallery(d);
+  const run = galleryAccess(d);
   await settle();
   assert.equal(title(), "Browse the gallery?");
   click("Allow");
   assert.equal(await run, true);
   assert.deepEqual(d.calls.saved, [{ galleryAccess: "yes" }]);
-  assert.equal(d.calls.shown, 1);
-  // …and is never asked again.
-  assert.equal(await browseGallery(d), true);
-  assert.equal(d.calls.shown, 2);
+  assert.equal(await galleryAccess(d), true);
+  assert.deepEqual(d.calls.saved, [{ galleryAccess: "yes" }]);
 });
 
-test("Not now is a stored no; the next Browse points at Settings", async () => {
+test("Not now is a stored no; the next link points at Settings", async () => {
   resetDom();
   const d = deps();
-  const run = browseGallery(d);
+  const run = galleryAccess(d);
   await settle();
   click("Not now");
   assert.equal(await run, false);
   assert.deepEqual(d.calls.saved, [{ galleryAccess: "no" }]);
-  assert.equal(d.calls.shown, 0);
-  const again = browseGallery(d);
+  const again = galleryAccess(d);
   await settle();
   assert.equal(title(), "Gallery access is off");
   click("Open Settings");
@@ -109,7 +109,7 @@ test("Not now is a stored no; the next Browse points at Settings", async () => {
 test("the web build never asks", async () => {
   resetDom();
   const d = deps();
-  assert.equal(await browseGallery({ ...d, web: true }), true);
+  assert.equal(await galleryAccess({ ...d, web: true }), true);
   assert.deepEqual(d.calls.saved, []);
 });
 
@@ -256,6 +256,41 @@ test("Settings ▸ Gallery: two answers and the shares, access left out on the w
   assert.deepEqual(emitted, [{ galleryAccess: "yes" }]);
   const web = buildGalleryPanel({}, () => {}, { rowWithNote, web: true });
   assert.deepEqual(labels(web.rows), ["Share consent", "Your shares"]);
+});
+
+test("Settings ▸ Gallery with the private stores: Public | Private tabs, one pane shown at a time", async () => {
+  resetDom();
+  const rowWithNote = ({ label, control }) =>
+    el("div", { class: "row", "data-label": label }, [control]);
+  const bridge = { stores: { list: async () => [], status: async () => ({ enabled: true, github: {} }) } }; // prettier-ignore
+  const { rows } = buildGalleryPanel({}, () => {}, { rowWithNote, stores: { bridge } }); // prettier-ignore
+  const [strip, pub, priv] = rows;
+  assert.equal(strip.getAttribute("role"), "tablist");
+  const tabs = [...strip.querySelectorAll("[role=tab]")];
+  assert.deepEqual(
+    tabs.map((b) => b.textContent),
+    ["Public", "Private"],
+  );
+  // Each tab names its pane, and each pane its tab.
+  for (const tab of tabs) {
+    const pane = rows.find((r) => r.id === tab.getAttribute("aria-controls"));
+    assert.ok(pane, tab.textContent);
+    assert.equal(pane.getAttribute("aria-labelledby"), tab.id);
+  }
+  const labelsIn = (pane) => [...pane.querySelectorAll("[data-label]")].map((r) => r.dataset.label); // prettier-ignore
+  assert.deepEqual(labelsIn(pub), ["Gallery access", "Share consent", "Your shares"]); // prettier-ignore
+  assert.deepEqual(labelsIn(priv), ["Private stores"]);
+  assert.equal(pub.hidden, false);
+  assert.equal(priv.hidden, true);
+  tabs[1].click();
+  assert.equal(pub.hidden, true);
+  assert.equal(priv.hidden, false);
+  assert.equal(tabs[1].getAttribute("aria-selected"), "true");
+  // Settings opened again comes back on the tab it was left on.
+  const again = buildGalleryPanel({}, () => {}, { rowWithNote, stores: { bridge } }); // prettier-ignore
+  assert.equal(again.rows[2].hidden, false);
+  again.rows[0].querySelector("[data-tab=public]").click();
+  await settle();
 });
 
 test("Settings ▸ Gallery ▸ Your shares: Check status asks after each, and keeps the note as text", async () => {

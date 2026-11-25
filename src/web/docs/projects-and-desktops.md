@@ -64,7 +64,8 @@ you're looking at — and right-clicking a tab drops the very same menu, acting 
   writes it as a self-contained `.desktop.chiphippo`; below it are other tools'
   formats: a **KiCad** project to take it to a circuit board, or a **Digital**
   circuit to keep simulating it. See [Exporting to Other Tools](exporting.md).
-- **Share to Gallery…** — offer it to the [gallery](gallery.md).
+- **Share To…** — offer it to the public [gallery](gallery.md), or save it
+  to one of your [private stores](private-stores.md).
 - **Desktop Properties…** — its **Name** and **Description**.
 - **Delete Desktop** — remove it from the project.
 
@@ -101,14 +102,17 @@ saved.
 ## Browsing your projects
 
 **File ▸ Browse Projects…**, or the toolbar's grid button, opens a window with
-two tabs:
+these tabs:
 
 - **Recent Projects** — every project on the Open Recent list as a card with a
   picture of its board, when it was saved and how many desktops it has. Click a
   card to open it (you're asked about unsaved work first, as for any open); its
   × takes it off the list without touching the file. A project whose file has
   been moved or deleted says *File not found*.
-- **Gallery** — the [gallery](gallery.md) of shared circuits.
+- **Gallery** — the [gallery](gallery.md) of shared circuits, once
+  **Settings ▸ Gallery ▸ Gallery access** is **Yes**.
+- **One tab for each [private store](private-stores.md)** you've added, named
+  after the store.
 
 The picture is taken of whatever view is on screen — breadboard, schematic or
 3D — each time the project is saved to its file, opened, or left with nothing

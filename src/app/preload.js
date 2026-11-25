@@ -106,9 +106,6 @@ for (const [channel, event] of [
   // The gallery window's Open, relayed to the app window as the example
   // button's is (`{ id }`).
   ["gallery:host-inbound", "chiphippo:gallery-host-inbound"],
-  // The Browse window's Gallery tab, asked for without Gallery access: the
-  // app window asks the question (no payload).
-  ["browse:ask-access", "chiphippo:browse-ask-access"],
   // To the Browse window: which tab to show when it is brought forward.
   ["browse:tab", "chiphippo:browse-tab"],
   // What the OS hands over (the gallery work, Phase 4): a double-clicked
@@ -117,6 +114,11 @@ for (const [channel, event] of [
   // `opensReady()` says the page is listening.
   ["app:open-file", "chiphippo:open-file"],
   ["gallery:link", "chiphippo:gallery-link"],
+  // The private stores: the Browse window's Open of a store's design,
+  // relayed (`{ id, entry, rev }`), and a store's share link the OS handed
+  // over (`{ ref }`, where the store is — store-format.js `normalizeStoreRef`).
+  ["store:host-inbound", "chiphippo:store-host-inbound"],
+  ["store:link", "chiphippo:store-link"],
   // A CUSTOM chip's pin-assignments window: what to draw, again, when the
   // design changes (main → that window, `{ ref, chip }`); and its "open the
   // design" button, relayed to the app window as the example's is (`{ kind:
@@ -439,11 +441,9 @@ contextBridge.exposeInMainWorld("chiphippo", {
     // (true), or refuses what is not an entry id (false).
     report: (id) => ipcRenderer.invoke("gallery:report", id),
     // The Browse window's Recent tab opening one of the recent projects (an
-    // MRU path, relayed to the app window), and its Gallery tab asking the
-    // app window for Gallery access.
+    // MRU path, relayed to the app window).
     openRecent: (filePath) =>
       ipcRenderer.invoke("browse:open-recent", filePath),
-    askAccess: () => ipcRenderer.invoke("browse:ask-access"),
     // Share to Gallery's Share publicly: `{doc, customChips, entry}` →
     // `{ok: true, id, number, key}` | `{ok: false, code}`. Main builds the
     // snapshot — named for the ENTRY's title and description, never anything
@@ -452,6 +452,44 @@ contextBridge.exposeInMainWorld("chiphippo", {
     // What became of one share: `{id, number, key}` (as `share` answered)
     // → `{ok: true, status, note}` | `{ok: false, code}`.
     shareStatus: (share) => ipcRenderer.invoke("gallery:share-status", share),
+  },
+
+  // ── Private stores (ipc/stores.js; desktop app only) ──────────────────────
+  // A store is named by its id; main's registry says where it is. Nothing
+  // here hands main a path or a URL, and no token ever comes back.
+  stores: {
+    status: () => ipcRenderer.invoke("store:status"),
+    list: () => ipcRenderer.invoke("store:list"),
+    // Setting one up: main opens its own folder dialog (mode "create" |
+    // "join" | "open"), or makes / joins a private GitHub repository.
+    addFolder: (opts) => ipcRenderer.invoke("store:add-folder", opts),
+    addGitHub: (opts) => ipcRenderer.invoke("store:add-github", opts),
+    remove: (id) => ipcRenderer.invoke("store:remove", id),
+    link: (id) => ipcRenderer.invoke("store:link", id),
+    reveal: (id, opts) => ipcRenderer.invoke("store:reveal", id, opts),
+    guide: (key) => ipcRenderer.invoke("store:guide", key),
+    // The Browse window: a store's entries, a revision's picture, its Open.
+    view: (id) => ipcRenderer.invoke("store:view", id),
+    thumb: (id, entry, rev) =>
+      ipcRenderer.invoke("store:thumb", id, entry, rev),
+    open: (id, entry, rev) => ipcRenderer.invoke("store:open", id, entry, rev),
+    // The app window: a revision's design, unreseated (gallery.openEntry's
+    // shape, plus `from`), and a save.
+    openEntry: (id, entry, rev) =>
+      ipcRenderer.invoke("store:open-entry", id, entry, rev),
+    captureThumb: (rect) => ipcRenderer.invoke("store:capture-thumb", rect),
+    save: (payload) => ipcRenderer.invoke("store:save", payload),
+    // GitHub: the device-flow sign-in (start → `{userCode}`; wait → the
+    // outcome), and the people a store's repository is shared with.
+    githubSignIn: () => ipcRenderer.invoke("store:github-sign-in"),
+    githubSignInWait: () => ipcRenderer.invoke("store:github-sign-in-wait"),
+    githubSignInCancel: () => ipcRenderer.invoke("store:github-sign-in-cancel"),
+    githubSignOut: () => ipcRenderer.invoke("store:github-sign-out"),
+    // "Use one of my repositories": the private ones the account can write
+    // to (`{ok, repos: [{repo}]}`).
+    githubRepos: () => ipcRenderer.invoke("store:github-repos"),
+    invite: (id, login) => ipcRenderer.invoke("store:invite", id, login),
+    people: (id) => ipcRenderer.invoke("store:people", id),
   },
 
   // ── Memory backing files (Features 180/190) ────────────────────────────────

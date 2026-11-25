@@ -318,6 +318,16 @@ const DEFAULTS = Object.freeze({
   // lets Settings ▸ Gallery ▸ Your shares ask what became of each.
   galleryShares: Object.freeze([]),
 
+  // ── Private stores (the private stores work; app/stores/) ────────────────
+  // The stores this machine has added (stores/registry.js): `{id, name, kind,
+  // where, added}` — a folder's path, or a GitHub repository. MAIN-OWNED: a
+  // folder store's path is an allowlist main reads and writes in later
+  // sessions, so the renderer must never write one. `githubLogin`: the
+  // account the GitHub sign-in is for (the token itself is
+  // credential-store's), main-owned likewise.
+  stores: Object.freeze([]),
+  githubLogin: "",
+
   // ── Feature flags ──────────────────────────────────────────────────────────
   // The unfinished features this machine switches on (app/feature-flags.js),
   // e.g. ["<name>"]. Edited by HAND, never by the app — there is no Settings
@@ -383,6 +393,9 @@ const MAIN_OWNED = Object.freeze([
   // The feature flags (app/feature-flags.js): a hand-edited list that can
   // switch on unfinished work which reaches the network.
   "features",
+  // The private stores: a folder store's path is an allowlist (ipc/stores.js).
+  "stores",
+  "githubLogin",
 ]);
 
 /**

@@ -23,16 +23,23 @@
 // or a second instance's argv). Dependency-free and side-effect-free, in the
 // cli-args.js style (tests: app/tests/deep-link.test.js).
 //
-// A LINK IS PARSED FOR AN ID, NEVER FOLLOWED AS A URL: the one link there is,
-// `chiphippo://gallery/<id>`, names a gallery entry by the id ENTRY_ID_RE
-// admits, and main turns that id into the one address it may mean
-// (gallery/sources.js) — so a link cannot aim main at anything off its host
-// table. Anything else is no link at all.
+// A LINK IS PARSED FOR AN ID, NEVER FOLLOWED AS A URL: `chiphippo://gallery/
+// <id>` names a gallery entry by the id ENTRY_ID_RE admits, and main turns
+// that id into the one address it may mean (gallery/sources.js) — so a link
+// cannot aim main at anything off its host table. `chiphippo://store/add#…`
+// (the private stores) carries a store's share link, read by store-format.js
+// `parseStoreLink` into a store ref held to shape — where a store is, never
+// a path or a secret — which only fills in the Add Store guide. Anything else
+// is no link at all.
 "use strict";
 
 const path = require("node:path");
 
 const { ENTRY_ID_RE } = require("../web/scripts/gallery/entry-format.js");
+const {
+  MAX_LINK_LENGTH: MAX_STORE_LINK,
+  parseStoreLink,
+} = require("../web/scripts/stores/store-format.js");
 
 const SCHEME = "chiphippo";
 
@@ -42,10 +49,16 @@ const MAX_LINK_LENGTH = 256;
 /**
  * Read a `chiphippo://` link.
  * @param {unknown} url
- * @returns {{kind: "gallery", id: string}|null}
+ * @returns {{kind: "gallery", id: string}|{kind: "store", ref: object}|null}
  */
 function parseDeepLink(url) {
-  if (typeof url !== "string" || url.length > MAX_LINK_LENGTH) return null;
+  if (typeof url !== "string") return null;
+  if (/^chiphippo:\/\/store\//i.test(url.trim())) {
+    if (url.length > MAX_STORE_LINK) return null;
+    const ref = parseStoreLink(url);
+    return ref ? { kind: "store", ref } : null;
+  }
+  if (url.length > MAX_LINK_LENGTH) return null;
   // By hand rather than through URL: `chiphippo:` is no special scheme, so
   // URL's host/path split differs by runtime, and the shape is fixed anyway —
   // the host, one segment, an optional trailing slash, nothing after.

@@ -109,6 +109,7 @@ import {
   removeDesktop,
   setActiveDesktop,
   setDesktopDoc,
+  setDesktopStoreFrom,
   setDesktopField,
   setProjectField,
   setProjectWheelLock,
@@ -125,6 +126,9 @@ import { isWeb } from "../web-flavour.js";
 /** The coded failures `gallery:open-entry` answers with (app/gallery/client.js
     and main.js), each a `workspace.galleryError.<code>` sentence. */
 const GALLERY_ERRORS = Object.freeze(["missing", "unavailable", "invalid", "tooBig", "refused"]); // prettier-ignore
+/** The codes `store:open-entry` answers with (ipc/stores.js), each a
+    `stores.error.<code>` sentence. */
+const STORE_OPEN_ERRORS = Object.freeze(["missing", "noAccess", "signedOut", "rateLimited", "invalid", "tooBig", "unavailable"]); // prettier-ignore
 import {
   chipRegistry,
   chipsMissingFrom,
@@ -1634,7 +1638,35 @@ export class ProjectWorkspace {
     if (!this.#project || typeof id !== "string" || !id) {
       return Promise.resolve(null);
     }
-    const key = `gallery:${id}`;
+    return this.#openShared(`gallery:${id}`, () => this.#fetchGalleryEntry(id), hooks); // prettier-ignore
+  }
+
+  /**
+   * A PRIVATE STORE's revision as a new desktop (the private stores work;
+   * main reads it, `store:open-entry`, by store, entry and revision ids). It
+   * lands exactly as a gallery design does — the same questions, the same
+   * chip merge — and remembers where it came from (`storeFrom` on its tab),
+   * so Save to Store… revises that entry from that revision.
+   * @param {{store: string, entry: string, rev: string}} ref
+   * @param {object} [hooks] - openGalleryEntry's.
+   * @returns {Promise<"added"|"switched"|null>}
+   */
+  openStoreEntry(ref, hooks = {}) {
+    const { store, entry, rev } = ref ?? {};
+    if (
+      !this.#project ||
+      ![store, entry, rev].every((v) => typeof v === "string" && v)
+    ) {
+      // prettier-ignore
+      return Promise.resolve(null);
+    }
+    return this.#openShared(`store:${store}/${entry}/${rev}`, () => this.#fetchStoreEntry(ref), hooks); // prettier-ignore
+  }
+
+  /** The one road a gallery design and a store revision arrive by: `key`
+      names what is being opened (one in flight per key; one already open is
+      switched to), `fetch` reads it. */
+  #openShared(key, fetch, hooks) {
     const inFlight = this.#examples.get(key);
     if (inFlight) return inFlight;
     // An entry already open is switched to with nothing fetched (offline, or
@@ -1643,18 +1675,18 @@ export class ProjectWorkspace {
     // no project state, which held every tab click behind it — and only its
     // questions and its landing wait their turn.
     const run = (async () => {
-      if (this.#galleryDesktop(id)) {
+      if (this.#galleryDesktop(key)) {
         const switched = await this.#oneSwapAtATime(async () => {
-          const there = this.#galleryDesktop(id);
+          const there = this.#galleryDesktop(key);
           if (!there) return null;
           await this.#selectTab(there.id);
           return "switched";
         });
         if (switched) return switched;
       }
-      const res = await this.#fetchGalleryEntry(id);
+      const res = await fetch();
       if (!res) return null;
-      return this.#oneSwapAtATime(() => this.#addGalleryEntry(id, res, hooks));
+      return this.#oneSwapAtATime(() => this.#addGalleryEntry(key, res, hooks));
     })().finally(() => this.#examples.delete(key));
     this.#examples.set(key, run);
     return run;
@@ -1669,8 +1701,8 @@ export class ProjectWorkspace {
    * project adds a second copy (named apart by `importDesktop`) rather than
    * guess.
    */
-  #galleryDesktop(id) {
-    const known = this.#galleryTabs.get(id);
+  #galleryDesktop(key) {
+    const known = this.#galleryTabs.get(key);
     return known?.serial === this.#projectSerial
       ? findDesktop(this.#project, known.tabId)
       : null;
@@ -1702,10 +1734,29 @@ export class ProjectWorkspace {
     return res;
   }
 
-  async #addGalleryEntry(id, res, { prepare, chooseRevisions } = {}) {
+  /** Main's answer for a store revision — the design, unreseated, and
+      where it came from — or null, the failure said. */
+  async #fetchStoreEntry({ store, entry, rev }) {
+    let res;
+    try {
+      res = await this.#bridge.stores?.openEntry?.(store, entry, rev);
+    } catch (err) {
+      return this.#failGallery(null, err);
+    }
+    if (!res?.ok) {
+      const code = STORE_OPEN_ERRORS.includes(res?.code) ? res.code : "unavailable"; // prettier-ignore
+      return this.#failGallery(t(`stores.error.${code}`));
+    }
+    if (Number(res.doc?.version) > DOC_VERSION) {
+      return this.#failGallery(t("workspace.galleryError.newer"));
+    }
+    return res;
+  }
+
+  async #addGalleryEntry(key, res, { prepare, chooseRevisions } = {}) {
     const failed = (message, err) => this.#failGallery(message, err);
     // Opened meanwhile (another way in, queued ahead): switched to.
-    const existing = this.#galleryDesktop(id);
+    const existing = this.#galleryDesktop(key);
     if (existing) {
       await this.#selectTab(existing.id);
       return "switched";
@@ -1781,9 +1832,11 @@ export class ProjectWorkspace {
       name: res.name,
       description: res.description,
       doc: canonical(merged.doc),
+      // A store revision's desktop remembers it (Save to Store…).
+      storeFrom: res.from ?? null,
     });
     this.#project = setActiveDesktop(next.meta, next.tab.id);
-    this.#galleryTabs.set(id, { serial: this.#projectSerial, tabId: next.tab.id }); // prettier-ignore
+    this.#galleryTabs.set(key, { serial: this.#projectSerial, tabId: next.tab.id }); // prettier-ignore
     this.#loadActive();
     this.#frameLoaded();
     // Clean as an example lands — unless an update changed a chip the
@@ -1835,6 +1888,29 @@ export class ProjectWorkspace {
       doc: meterForFile(snap.doc),
       customChips: customChipsUsedBy(snap.doc, this.customChips),
     };
+  }
+
+  /** The private store revision desktop `id` is linked to, or null. */
+  storeFromOf(id) {
+    const tab = this.#project ? findDesktop(this.#project, id) : null;
+    return tab?.storeFrom ?? null;
+  }
+
+  /**
+   * Link desktop `id` to a store revision (Save to Store… just wrote it), or
+   * unlink it (null). A change to the project, like any other.
+   */
+  setStoreFrom(id, storeFrom) {
+    if (!this.#project) return;
+    const next = setDesktopStoreFrom(this.#project, id, storeFrom);
+    if (next === this.#project) return;
+    this.#project = next;
+    // The desktop is no longer the revision it was opened as: opening that
+    // revision again must open IT, not switch to this edited desktop.
+    for (const [key, known] of this.#galleryTabs) {
+      if (key.startsWith("store:") && known.tabId === id) this.#galleryTabs.delete(key); // prettier-ignore
+    }
+    this.#announce();
   }
 
   /**

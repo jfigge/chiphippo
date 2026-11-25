@@ -56,7 +56,7 @@
       "exportDigital": "Circuit Digital…",
       "properties": "Propriétés du bureau…",
       "delete": "Supprimer le bureau",
-      "share": "Partager dans la galerie…"
+      "share": "Partager…"
     },
     "edit": {
       "title": "Édition",
@@ -120,6 +120,14 @@
     },
     "exportDigital": {
       "title": "Exporter vers Digital"
+    },
+    "storeCreate": {
+      "title": "Où placer le dossier de la collection ?",
+      "button": "Créer la collection ici"
+    },
+    "storeJoin": {
+      "title": "Choisissez le dossier partagé",
+      "button": "Utiliser ce dossier"
     }
   },
   "toolbar": {
@@ -393,7 +401,7 @@
     },
     "gallery": {
       "access": "Accès à la galerie",
-      "accessHint": "Si Chip Hippo peut lire la galerie sur chiphippo.com/gallery : la liste des modèles, leurs images, et un modèle quand vous l'ouvrez. Rien de ce qui vous appartient n'est envoyé. Demandé la première fois que vous parcourez la galerie.",
+      "accessHint": "Si Chip Hippo peut lire la galerie sur chiphippo.com/gallery : sa liste de montages, leurs images et un montage quand vous l'ouvrez. Rien de vous n'est envoyé. Fichier ▸ Parcourir les projets n'affiche l'onglet Galerie que tant que ce réglage est sur Oui.",
       "share": "Consentement au partage",
       "shareHint": "Si le partage d'un modèle dans la galerie montre ce qui sera publié et demande d'abord (Demander), le montre en une ligne (Oui), ou est désactivé (Non).",
       "shares": "Vos partages",
@@ -414,7 +422,12 @@
       "remove": "Retirer « {title} » de cette liste",
       "yes": "Oui",
       "no": "Non",
-      "ask": "Demander"
+      "ask": "Demander",
+      "tab": {
+        "public": "Publique",
+        "private": "Privée"
+      },
+      "tabsLabel": "Galerie"
     }
   },
   "palette": {
@@ -2994,6 +3007,10 @@
         "refused": "Le partage n'est pas disponible ici.",
         "unavailable": "La galerie est injoignable. Vérifiez la connexion et réessayez."
       }
+    },
+    "shareTo": {
+      "title": "Partager",
+      "where": "Partager dans"
     }
   },
   "browse": {
@@ -3013,11 +3030,242 @@
         "other": "{count} bureaux"
       },
       "remove": "Retirer {name} des projets récents"
-    },
-    "access": {
-      "title": "L’accès à la galerie est désactivé",
-      "message": "La galerie est une collection de circuits sur chiphippo.com. Chip Hippo demande avant d’y lire quoi que ce soit.",
-      "allow": "Autoriser…"
     }
+  },
+  "stores": {
+    "title": "Collections privées",
+    "hint": "Gardez des montages que seuls vous et les amis de votre choix pouvez voir, et travaillez-y ensemble. Une collection se trouve dans un dossier que vous synchronisez (Google Drive, Dropbox, OneDrive, iCloud Drive) ou dans un dépôt GitHub privé — Chip Hippo ne fait tourner aucun serveur pour elle.",
+    "add": "Ajouter une collection…",
+    "empty": "Aucune collection privée pour l'instant.",
+    "copyLink": "Copier le lien",
+    "copied": "Copié",
+    "linkLabel": "Le lien de la collection",
+    "linkHintFolder": "Envoyez ce lien à un ami. Il lui faut aussi le dossier lui-même : partagez-le d'abord avec lui dans {app}.",
+    "linkHintGitHub": "Envoyez ce lien à un ami. Invitez d'abord son compte GitHub, pour que la collection le laisse entrer.",
+    "invite": "Inviter",
+    "peopleOnGitHub": "Gérer qui a accès sur GitHub",
+    "browseStore": "Parcourir",
+    "showFolder": "Afficher le dossier",
+    "showRepo": "Ouvrir sur GitHub",
+    "remove": "Retirer",
+    "removeAsk": "Retirer « {name} » de cet ordinateur ? Rien n'est supprimé : la collection et ses montages restent où ils sont, pour vous et pour tous ceux avec qui elle est partagée, et vous pourrez la rajouter grâce à son lien.",
+    "removeConfirm": "Retirer de cet ordinateur",
+    "signOut": "Se déconnecter",
+    "back": "Retour",
+    "done": "Terminé",
+    "whereFolder": "{app} · {path}",
+    "whereGitHub": "GitHub · {repo}",
+    "repoDescription": "Montages Chip Hippo, partagés",
+    "error": {
+      "missing": "Cette collection est introuvable. Son dossier a peut-être été déplacé, ou il n'a pas encore fini de se synchroniser sur cet ordinateur.",
+      "noAccess": "Cette collection n'est pas partagée avec vous (ou elle n'existe plus).",
+      "signedOut": "Reconnectez-vous à GitHub pour accéder à cette collection.",
+      "rateLimited": "GitHub a demandé à Chip Hippo de ralentir. Attendez quelques minutes et réessayez.",
+      "wrongStore": "Ce dossier contient une autre collection que celle du lien.",
+      "ambiguous": "Ce dossier contient plusieurs collections. Choisissez le dossier propre à la collection.",
+      "notStore": "Il n'y a aucune collection Chip Hippo dans ce dépôt.",
+      "behind": "Quelqu'un a enregistré une version plus récente avant vous.",
+      "newer": "Cette collection a été créée par une version plus récente de Chip Hippo. Mettez Chip Hippo à jour pour y enregistrer.",
+      "full": "Cet ordinateur a déjà autant de collections qu'il peut en garder. Retirez-en une d'abord.",
+      "denied": "Chip Hippo n'est pas autorisé à écrire dans ce dossier.",
+      "tooBig": "Ce montage est trop gros pour une collection.",
+      "romTooBig": "Le contenu des ROM de ce montage est trop gros pour une collection.",
+      "invalid": "Impossible de l'enregistrer en l'état. Vérifiez le titre et votre nom.",
+      "noUser": "GitHub n'a aucun compte à ce nom.",
+      "nameTaken": "Votre compte GitHub a déjà des dépôts à ce nom. Essayez un autre nom.",
+      "notPrivate": "GitHub a rendu le dépôt public, donc Chip Hippo ne l'a pas utilisé. Vérifiez les paramètres de votre compte GitHub.",
+      "notConfigured": "Les collections sur GitHub ne sont pas encore disponibles dans cette version de Chip Hippo.",
+      "noKeychain": "Cet ordinateur n'a aucun endroit sûr où garder une connexion GitHub, donc Chip Hippo ne peut pas rester connecté.",
+      "notInvited": "Cette collection n'a pas encore été partagée avec votre compte GitHub.",
+      "notSynced": "Ce dossier ne contient pas cette collection. Si elle vient tout juste d'être partagée avec vous, elle est peut-être encore en cours de synchronisation ; attendez une minute et réessayez.",
+      "signInDenied": "La connexion à GitHub n'a pas abouti. Réessayez.",
+      "cancelled": "La connexion a été annulée.",
+      "unavailable": "Cela n'a pas fonctionné. Vérifiez votre connexion et réessayez.",
+      "badFolder": "Saisissez un nom de dossier pour la collection, par exemple chiphippo. Utilisez des lettres, des chiffres, des points, des tirets et des tirets bas, avec / entre les dossiers.",
+      "badLink": "Ce n'est pas un lien complet vers une collection Chip Hippo. Copiez le lien entier depuis le message et réessayez.",
+      "badLogin": "Ce n'est pas un nom d'utilisateur GitHub. Les noms d'utilisateur contiennent des lettres, des chiffres et des tirets.",
+      "pickPublic": "Ce dépôt est public : une collection dedans publierait chaque montage. Choisissez-en un privé.",
+      "storePublic": "Le dépôt de cette collection est public : tout ce qui y est enregistré pourrait être vu par n'importe qui. Il doit être privé pour que Chip Hippo l'utilise — demandez à son propriétaire de le rendre privé.",
+      "noPush": "Votre compte GitHub peut seulement lire ce dépôt : impossible d'y enregistrer des montages.",
+      "moved": "Le dépôt de cette collection a été renommé ou déplacé sur GitHub. Demandez un nouveau lien à son propriétaire.",
+      "tooLarge": "Ce dépôt est trop volumineux pour que GitHub le liste en une fois. Placez la collection dans un dossier à part.",
+      "alreadyAdded": "Cet ordinateur a déjà cette collection, conservée ailleurs. Pour l'ajouter d'ici, retirez d'abord celle de la liste."
+    },
+    "setup": {
+      "linkCardTitle": "Ajouter une collection privée",
+      "startTitle": "Ajouter une collection privée",
+      "startIntro": "Une collection privée garde des montages que seuls vous et les amis avec qui vous la partagez pouvez voir. Chacun peut les ouvrir, les modifier et en enregistrer de nouvelles versions. Elle se trouve sur un service que vous utilisez déjà — choisissez-en un :",
+      "choice": {
+        "folder": {
+          "title": "Un dossier que vous synchronisez",
+          "text": "Google Drive, Dropbox, OneDrive, iCloud Drive ou n'importe quel dossier partagé. Aucune connexion nécessaire."
+        },
+        "github": {
+          "title": "GitHub",
+          "text": "Un dépôt privé gratuit : un nouveau que Chip Hippo crée pour vous, ou un que vous avez déjà. Invitez vos amis par leur nom GitHub."
+        },
+        "link": {
+          "title": "J'ai un lien d'un ami",
+          "text": "Rejoignez une collection que quelqu'un a partagée avec vous."
+        },
+        "local": {
+          "title": "Un dossier de collection déjà sur cet ordinateur",
+          "text": "Restaurer l'emplacement local d'une collection existante."
+        }
+      },
+      "nameLabel": "Nom de la collection",
+      "namePlaceholder": "p. ex. Club d'électronique",
+      "browse": "Voir ses montages",
+      "provider": {
+        "gdrive": "Google Drive",
+        "dropbox": "Dropbox",
+        "onedrive": "OneDrive",
+        "icloud": "iCloud Drive",
+        "other": "Un autre dossier synchronisé"
+      },
+      "folder": {
+        "title": "Créer une collection dans un dossier synchronisé",
+        "intro": "Chip Hippo crée un dossier pour la collection dans le dossier que votre service cloud synchronise entre vos ordinateurs. Votre service le partage avec vos amis ; Chip Hippo se contente de lire et d'écrire les montages qu'il contient.",
+        "provider": "Quel service ?",
+        "noApp": "Son application n'est pas encore sur cet ordinateur ?",
+        "getApp": "Obtenir {app}",
+        "where": {
+          "gdrive": "Installez Google Drive for desktop et connectez-vous. Ensuite, quand Chip Hippo demande où, choisissez « Mon Drive » (ou un dossier à l'intérieur).",
+          "dropbox": "Installez l'application Dropbox et connectez-vous. Ensuite, quand Chip Hippo demande où, choisissez votre dossier Dropbox (ou un dossier à l'intérieur).",
+          "onedrive": "Installez OneDrive et connectez-vous. Ensuite, quand Chip Hippo demande où, choisissez votre dossier OneDrive (ou un dossier à l'intérieur).",
+          "icloud": "Activez iCloud Drive sur ce Mac. Ensuite, quand Chip Hippo demande où, choisissez iCloud Drive (ou un dossier à l'intérieur). Vos amis ont aussi besoin d'iCloud Drive.",
+          "other": "N'importe quel dossier synchronisé avec les ordinateurs de vos amis convient — Syncthing, un lecteur réseau partagé ou un autre service de synchronisation."
+        },
+        "choose": "Choisir l'emplacement…",
+        "madeTitle": "« {name} » est prête",
+        "madeWhere": "Son dossier est {path}.",
+        "share": {
+          "gdrive": "Dans Google Drive, partagez le nouveau dossier avec vos amis (clic droit dessus ▸ Partager) et donnez-leur l'accès Éditeur.",
+          "dropbox": "Dans Dropbox, partagez le nouveau dossier avec vos amis et autorisez-les à le modifier.",
+          "onedrive": "Dans OneDrive, partagez le nouveau dossier avec vos amis et autorisez-les à le modifier.",
+          "icloud": "Dans le Finder, partagez le nouveau dossier avec vos amis (clic droit dessus ▸ Partager) et autorisez-les à apporter des modifications.",
+          "other": "Assurez-vous que le nouveau dossier arrive sur les ordinateurs de vos amis et qu'ils peuvent y écrire."
+        },
+        "howToShare": "Comment partager un dossier",
+        "sendLink": "Envoyez ce lien à vos amis. Quand ils l'ouvriront, Chip Hippo les guidera pas à pas pour ajouter la collection.",
+        "friendSees": "Le lien indique de quelle collection il s'agit et où elle se trouve — aucun mot de passe, rien de privé. Seules les personnes avec qui vous avez partagé le dossier peuvent ouvrir les montages."
+      },
+      "github": {
+        "title": "Créer une collection sur GitHub",
+        "intro": "Chip Hippo crée un dépôt privé sur votre compte GitHub pour y garder les montages, et invite les amis que vous indiquez. GitHub est gratuit ; vos amis ont aussi besoin d'un compte gratuit.",
+        "signInWhy": "D'abord, connectez-vous à GitHub. Vous saisissez un code court sur la page de GitHub elle-même — Chip Hippo ne voit jamais votre mot de passe.",
+        "noAccount": "Pas de compte GitHub ?",
+        "signUp": "En créer un gratuitement",
+        "signIn": "Se connecter à GitHub",
+        "typeCode": "Saisissez ce code sur la page de GitHub, puis autorisez Chip Hippo :",
+        "copyAndOpen": "Copier le code et ouvrir GitHub",
+        "waiting": "En attente de GitHub… Revenez ici une fois l'autorisation donnée.",
+        "signedIn": "Connecté à GitHub.",
+        "signedInAs": "Connecté à GitHub en tant que @{login}.",
+        "private": "Le dépôt est privé : seuls vous et les personnes que vous invitez pouvez le voir. Chip Hippo demande à GitHub l'accès à vos dépôts privés : c'est le seul moyen pour lui d'atteindre celui-ci.",
+        "make": "Créer la collection",
+        "making": "Création…",
+        "madeWhere": "Elle se trouve dans le dépôt privé {repo}.",
+        "sendLink": "Envoyez-leur ensuite ce lien. Quand ils l'ouvriront, Chip Hippo les connectera et acceptera l'invitation pour eux.",
+        "friendSees": "Le lien indique de quelle collection il s'agit — aucun mot de passe, rien de privé. Seuls les comptes que vous avez invités peuvent ouvrir les montages.",
+        "where": "Où mettre la collection ?",
+        "whereNew": "Dans un nouveau dépôt privé",
+        "whereExisting": "Dans un dossier de l'un de mes dépôts",
+        "repo": "Dépôt",
+        "repoLoading": "Chargement de vos dépôts…",
+        "repoNone": "Aucun dépôt privé dans lequel vous pouvez écrire n'a été trouvé. Les dépôts publics ne sont pas proposés : une collection dans l'un d'eux publierait chaque montage.",
+        "privateOnly": "Seuls les dépôts privés dans lesquels vous pouvez écrire sont listés : une collection dans un dépôt public publierait chaque montage.",
+        "folder": "Dossier dans le dépôt",
+        "folderHint": "Les fichiers de la collection vont dans ce dossier, à l'écart du reste du dépôt. Si le dossier contient déjà une collection Chip Hippo, c'est elle qui est ajoutée.",
+        "repoRetry": "Réessayer"
+      },
+      "invite": {
+        "intro": "Invitez vos amis par leur nom d'utilisateur GitHub :",
+        "label": "Le nom d'utilisateur GitHub d'un ami",
+        "placeholder": "son-nom-utilisateur",
+        "invite": "Inviter",
+        "pending": "invité — en attente de sa réponse"
+      },
+      "link": {
+        "title": "Rejoindre la collection d'un ami",
+        "intro": "Collez le lien que votre ami vous a envoyé :",
+        "label": "Le lien de la collection",
+        "placeholder": "https://chiphippo.com/store/#…",
+        "next": "Suivant",
+        "bad": "Ce n'est pas un lien de collection Chip Hippo. Copiez le lien entier depuis le message de votre ami et réessayez."
+      },
+      "join": {
+        "title": "Rejoindre « {name} »",
+        "folderIntro": "Cette collection est un dossier que votre ami a partagé avec vous dans {app}. Trois étapes :",
+        "accept": {
+          "gdrive": "Ouvrez l'e-mail de Google Drive et ouvrez le dossier partagé.",
+          "dropbox": "Ouvrez l'e-mail de Dropbox et ajoutez le dossier partagé à votre Dropbox.",
+          "onedrive": "Ouvrez l'e-mail de OneDrive et ouvrez le dossier partagé.",
+          "icloud": "Ouvrez l'invitation iCloud Drive que votre ami vous a envoyée et acceptez-la.",
+          "other": "Assurez-vous que le dossier de votre ami est bien arrivé sur cet ordinateur."
+        },
+        "sync": {
+          "gdrive": "Dans Google Drive, ajoutez-le à votre Drive : clic droit sur le dossier ▸ Organiser ▸ Ajouter un raccourci, puis choisissez Mon Drive. Google Drive for desktop doit être installé sur cet ordinateur.",
+          "dropbox": "Vérifiez que l'application Dropbox de cet ordinateur l'a synchronisé.",
+          "onedrive": "Dans OneDrive, choisissez « Ajouter un raccourci à Mes fichiers » sur le dossier, pour qu'il se synchronise sur cet ordinateur.",
+          "icloud": "Il apparaît dans iCloud Drive sur ce Mac, sous le nom que votre ami lui a donné.",
+          "other": "Il doit se trouver dans un dossier de cet ordinateur synchronisé avec celui de votre ami."
+        },
+        "pick": "Choisissez ce dossier. (Choisir le dossier juste au-dessus fonctionne aussi.)",
+        "chooseFolder": "Choisir le dossier…",
+        "githubIntro": "Cette collection est le dépôt GitHub privé {repo}. Connectez-vous avec le compte GitHub que votre ami a invité, puis rejoignez-la.",
+        "join": "Rejoindre la collection",
+        "notInvited": "Vous êtes connecté en tant que @{login}, mais cette collection n'a pas encore été partagée avec ce compte. Demandez à votre ami d'inviter @{login}, puis appuyez de nouveau sur Rejoindre.",
+        "folderIntroOther": "Cette collection est un dossier qu'un ami a partagé avec vous. Trois étapes :"
+      },
+      "joinedTitle": "« {name} » a été ajoutée",
+      "joinedText": "Elle a son propre onglet dans Fichier ▸ Parcourir les projets. Enregistrez-y un bureau avec Bureau ▸ Enregistrer dans une collection privée…",
+      "local": {
+        "title": "Ajouter un dossier de collection déjà sur cet ordinateur",
+        "intro": "Choisissez le dossier d'une collection — un que vous avez retiré de cette liste, ou un qui s'est synchronisé ici depuis un autre de vos ordinateurs. Quel service le synchronise ? (Cela décide de ce que l'on dit à vos amis quand vous le partagez.)"
+      }
+    },
+    "browse": {
+      "refresh": "Actualiser",
+      "openLatest": "Ouvrir la plus récente",
+      "revisions": {
+        "one": "{count} version",
+        "other": "{count} versions"
+      },
+      "forked": {
+        "one": "{count} personnes ont enregistré à partir de la même version, donc les deux sont conservées.",
+        "other": "{count} personnes ont enregistré à partir de la même version, donc chacune est conservée. Ouvrez celle à partir de laquelle vous voulez continuer."
+      },
+      "latest": "la plus récente",
+      "otherVersion": "une autre version",
+      "someone": "quelqu'un",
+      "search": "Rechercher dans cette collection",
+      "empty": "Cette collection est encore vide. Enregistrez-y un bureau avec Bureau ▸ Enregistrer dans une collection privée…",
+      "openVersion": "Ouvrir la version du {when} par {who}"
+    },
+    "save": {
+      "intro": "Enregistrez ce bureau là où les amis avec qui vous partagez la collection pourront l'ouvrir et continuer.",
+      "store": "Collection",
+      "saveAs": "Enregistrer comme",
+      "asVersion": "Une nouvelle version de « {title} »",
+      "asNew": "Un nouveau montage",
+      "noteLabel": "Qu'est-ce qui a changé ? (facultatif)",
+      "notePlaceholder": "p. ex. horloge remplacée par un 555",
+      "private": "Seules les personnes avec qui la collection est partagée peuvent le voir.",
+      "running": "Arrêtez le circuit pour l'enregistrer.",
+      "save": "Enregistrer",
+      "saving": "Enregistrement…",
+      "behind": "{who} a enregistré une version plus récente ({when}) après celle que vous avez ouverte. Vous pouvez ouvrir la sienne et continuer à partir de celle-ci, ou enregistrer la vôtre à côté — les deux versions sont alors conservées.",
+      "openTheirs": "Ouvrir la sienne",
+      "saveAlongside": "Enregistrer la mienne à côté",
+      "savedTitle": "Enregistré",
+      "saved": "Enregistré dans « {store} ».",
+      "noStoreTitle": "Aucune collection privée pour l'instant",
+      "noStore": "Ajoutez d'abord une collection privée, dans Réglages ▸ Galerie ▸ Collections privées.",
+      "linkLost": "Le montage dont vient ce bureau n'a pas pu être lu pour l'instant (hors ligne, ou pas encore synchronisé) : il sera enregistré comme un nouveau montage."
+    },
+    "linkCopied": "Lien copié.",
+    "linkHintFolderOther": "Envoyez ce lien à un ami. Il lui faut aussi le dossier lui-même : vérifiez qu'il arrive sur son ordinateur et qu'il peut y enregistrer.",
+    "actionFor": "{action} : {name}"
   }
 }

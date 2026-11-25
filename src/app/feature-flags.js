@@ -40,14 +40,14 @@
 // A name not in FEATURES is ignored rather than refused: a flag retired
 // after its feature ships must not stop an old settings file from loading.
 //
-// None today: the gallery's flag was retired when it shipped (Jason,
-// 2026-11-05), so a stored or typed `gallery` is now ignored. The machinery
-// stays for the next unfinished feature — add its name to FEATURES and read
+// The gallery's flag was retired when it shipped (Jason, 2026-11-05), and the
+// private stores' likewise (Jason, 2026-11-22), so a stored or typed
+// `gallery` or `stores` is now ignored. Add a name to FEATURES and read
 // it in main as `features().includes(name)`, in the renderer as
 // `featureEnabled(name)`.
 "use strict";
 
-/** Every flag this build knows, and what it hides. */
+/** Every flag this build knows, and what it hides. None today. */
 const FEATURES = Object.freeze([]);
 
 const ARG_PREFIX = "--features=";

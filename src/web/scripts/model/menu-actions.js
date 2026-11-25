@@ -45,6 +45,12 @@
 //     own menu.
 //   · `list` marks an item whose submenu is a runtime list the caller supplies
 //     (Open Recent).
+//   · `feature` names the feature flag (app/feature-flags.js) an unfinished
+//     action waits behind: left out unless the caller's `features` has it.
+//     (None today.)
+//   · `desktopOnly` marks an action the web build never offers: left out when
+//     the caller says `web`. (None today — Save to Private Store… was one
+//     until it joined Share To…'s Private tab.)
 
 export const SEPARATOR = Object.freeze({ separator: true });
 
@@ -132,7 +138,8 @@ export const DESKTOP_ACTIONS = freeze([
     ],
   },
   SEPARATOR,
-  // Reads the desktop as Duplicate does, so it follows the same run lock.
+  // Share To… — one card, Public (the gallery) | Private (a store). Reads the
+  // desktop as Duplicate does, so it follows the same run lock.
   { id: "desktop-share", labelKey: "menu.desktop.share", gate: "duplicate" },
   SEPARATOR,
   { id: "desktop-properties", labelKey: "menu.desktop.properties" },
@@ -149,6 +156,13 @@ export const DESKTOP_ACTIONS = freeze([
 export const GATED_ACTION_IDS = Object.freeze(
   DESKTOP_ACTIONS.filter((a) => a.gate).map((a) => a.id),
 );
+
+/** Is an action offered — its feature flag on, and (for a desktop-only
+    one) not the web build? */
+export function featureOn(action, features = [], web = false) {
+  if (action.desktopOnly && web) return false;
+  return !action.feature || (features ?? []).includes(action.feature);
+}
 
 /** The push an action sends (without the `menu:`/`chiphippo:` prefix). */
 export function actionEvent(action) {
@@ -228,15 +242,18 @@ export function accelHint(accelerator, isMac) {
  * @param {Record<string, {items: object[], emptyLabel?: string}>} [opts.lists]
  *   - the runtime submenu of each `list` action, already in popup form.
  * @param {boolean} [opts.isMac]
+ * @param {string[]} [opts.features] - the feature flags on (`feature`).
+ * @param {boolean} [opts.web] - the web build (`desktopOnly` left out).
  */
 export function toPopupItems(actions, opts) {
-  const { label, handlers = {}, state = {}, lists = {}, isMac = false } = opts;
+  const { label, handlers = {}, state = {}, lists = {}, isMac = false, features = [], web = false } = opts; // prettier-ignore
   const items = [];
   for (const action of actions) {
     if (action === SEPARATOR) {
       items.push({ separator: true });
       continue;
     }
+    if (!featureOn(action, features, web)) continue;
     const base = {
       label: label(action.labelKey),
       accelerator: accelHint(action.accelerator, isMac),
@@ -269,27 +286,34 @@ export function toPopupItems(actions, opts) {
  *   `menu:<event>` to the app window.
  * @param {Record<string, object[]>} [opts.lists] - the runtime submenu of
  *   each `list` action, already in template form.
+ * @param {string[]} [opts.features] - the feature flags on (`feature`).
+ * @param {boolean} [opts.web] - the web build (`desktopOnly` left out).
  */
 export function toElectronTemplate(actions, opts) {
-  const { label, send, lists = {} } = opts;
+  const { label, send, lists = {}, features = [], web = false } = opts;
   return tidySeparators(
-    actions.map((action) => {
-      if (action === SEPARATOR) return { type: "separator" };
-      const item = { label: label(action.labelKey) };
-      if (action.gate) item.id = action.id;
-      if (action.accelerator) item.accelerator = action.accelerator;
-      if (action.list) item.submenu = lists[action.id] ?? [];
-      else if (action.submenu) {
-        item.submenu = toElectronTemplate(action.submenu, opts);
-      } else {
-        const channel = `menu:${actionEvent(action)}`;
-        item.click = () =>
-          action.payload === undefined
-            ? send(channel)
-            : send(channel, action.payload);
-      }
-      return item;
-    }),
+    actions
+      .filter(
+        (action) => action === SEPARATOR || featureOn(action, features, web),
+      )
+      .map((action) => {
+        // prettier-ignore
+        if (action === SEPARATOR) return { type: "separator" };
+        const item = { label: label(action.labelKey) };
+        if (action.gate) item.id = action.id;
+        if (action.accelerator) item.accelerator = action.accelerator;
+        if (action.list) item.submenu = lists[action.id] ?? [];
+        else if (action.submenu) {
+          item.submenu = toElectronTemplate(action.submenu, opts);
+        } else {
+          const channel = `menu:${actionEvent(action)}`;
+          item.click = () =>
+            action.payload === undefined
+              ? send(channel)
+              : send(channel, action.payload);
+        }
+        return item;
+      }),
     (i) => i?.type === "separator",
   );
 }

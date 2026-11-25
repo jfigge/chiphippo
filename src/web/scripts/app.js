@@ -28,14 +28,14 @@ import { el } from "./dom.js";
 import * as i18n from "./i18n.js";
 import { t } from "./i18n.js";
 import { loadFeatures } from "./feature-flags.js";
+import { mountStoreSetup } from "./components/store-setup.js";
 import { listenForGalleryLinks } from "./components/gallery-links.js";
 import {
-  browseGallery,
   galleryAccess,
   galleryPrepare,
   galleryRevisions,
 } from "./components/gallery-open.js";
-import { shareToGallery } from "./components/gallery-share.js";
+import { shareTo } from "./components/share-to.js";
 import {
   applyFontSize,
   scaleStepForEvent,
@@ -1605,6 +1605,9 @@ async function init() {
   await i18n.init();
   // The launch's feature flags, once, so every later check is synchronous.
   await loadFeatures(bridge);
+  // The private stores (ipc/stores.js): never on the web build, whose
+  // filesystem is the tab's own.
+  const storesEnabled = () => !isWeb() && Boolean(bridge?.stores);
 
   // Load settings BEFORE mounting the desk so the saved viewport applies on
   // the first paint (acceptable to proceed with defaults if the read fails).
@@ -1861,8 +1864,8 @@ async function init() {
     onDuplicate: (id) => void workspace?.duplicateTab(id),
     onExport: (id) => void workspace?.exportTab(id),
     onExportTo: (id, format) => void exportDesktopTo(id, format),
-    // Share to Gallery… (the gallery work), answered by the gallery block
-    // below as the Desktop menu's is.
+    // Share To… (Public: the gallery; Private: a store), answered by the
+    // gallery block below as the Desktop menu's is.
     onShare: (id) =>
       window.dispatchEvent(
         new CustomEvent("chiphippo:desktop-share", { detail: { id } }),
@@ -2756,11 +2759,19 @@ async function init() {
     // The workspace gave up waiting (ProjectWorkspace `captureBoard`): what is
     // on screen now may be another project's board.
     if (signal?.aborted) return false;
-    if (document.querySelector("dialog[open]")) return false;
+    const rect = boardRect();
+    if (!rect) return false;
+    return bridge.project.thumb.capture({ path, desktops, rect });
+  };
+  /** The box of the board on screen, clear of what floats over it, in CSS
+      pixels — or null (a card is up, or no view is showing). The recent
+      projects' pictures and a private store revision's are both of it. */
+  const boardRect = () => {
+    if (document.querySelector("dialog[open]")) return null;
     const view = [desk, schematicViewport, view3dViewport].find(
       (v) => v && !v.hidden && v.getClientRects().length > 0,
     );
-    if (!view) return false;
+    if (!view) return null;
     const box = view.getBoundingClientRect();
     let top = box.top;
     let bottom = box.bottom;
@@ -2774,11 +2785,7 @@ async function init() {
     if (zoom?.height && zoom.top > box.top + box.height / 2) {
       bottom = Math.min(bottom, zoom.top - 4);
     }
-    return bridge.project.thumb.capture({
-      path,
-      desktops,
-      rect: { x: box.left, y: top, width: box.width, height: bottom - top },
-    });
+    return { x: box.left, y: top, width: box.width, height: bottom - top };
   };
 
   workspace = new ProjectWorkspace({
@@ -2859,12 +2866,6 @@ async function init() {
     saveSettings,
     openSettings: (tab) => openSettings(tab),
   };
-  // The Browse window's Gallery tab, opened without access: ask here (where
-  // the answer is saved), then show it the gallery.
-  window.addEventListener(
-    "chiphippo:browse-ask-access",
-    () => void browseGallery({ bridge, ...access }),
-  );
   window.addEventListener("chiphippo:gallery-host-inbound", (e) => {
     const id = e.detail?.id;
     if (typeof id === "string") void openFromGallery(id);
@@ -2880,16 +2881,68 @@ async function init() {
   if (isWeb()) listenForGalleryLinks({ open: openFromGallery });
   // Share to Gallery… (Phase 5): the Desktop menu's (the active desktop) or
   // a tab's own menu (`detail.id`).
+  // ── Private stores (desktop app only) ──
+  // A store revision opened — from the Browse window's Stores tab, or a
+  // save's "open theirs" — lands as a gallery design does.
+  const openFromStore = (ref) =>
+    workspace.openStoreEntry(ref, {
+      prepare: galleryPrepare({
+        appVersion: () => bridge.getVersion(),
+        settings: () => currentSettings,
+        saveSettings,
+      }),
+      chooseRevisions: galleryRevisions(),
+    });
+  window.addEventListener("chiphippo:store-host-inbound", (e) => {
+    const { id, entry, rev } = e.detail ?? {};
+    if (storesEnabled()) void openFromStore({ store: id, entry, rev });
+  });
+  // A store's share link the OS handed over: the Add Store guide, filled in,
+  // in a card of its own.
+  window.addEventListener("chiphippo:store-link", (e) => {
+    const ref = e.detail?.ref;
+    if (!storesEnabled() || !ref) return;
+    const holder = el("div");
+    let guide = null;
+    PopupManager.dialog({
+      title: t("stores.setup.linkCardTitle"),
+      className: "store-setup-popup",
+      body: [holder],
+      onClose: () => guide?.destroy(),
+    });
+    guide = mountStoreSetup(holder, {
+      bridge,
+      ref,
+      onClose: () => PopupManager.close(),
+      onBrowse: (store) => void bridge.gallery.show(`stores:${store.id}`),
+    });
+  });
+  // Share To…: the Desktop menu's (the active desktop) or a tab's own — one
+  // card, Public (the gallery) | Private (a store; the desktop app's only).
   window.addEventListener("chiphippo:desktop-share", (e) => {
     const id = e.detail?.id ?? workspace.activeTab?.id;
     if (!id) return;
-    void shareToGallery({
+    void shareTo({
       bridge,
+      privateEnabled: storesEnabled(),
+      tabId: id,
       desktop: workspace.portableDesktop(id),
+      storeFrom: workspace.storeFromOf(id),
+      setStoreFrom: (tabId, from) => workspace.setStoreFrom(tabId, from),
+      openRevision: (ref) => void openFromStore(ref),
       settings: () => currentSettings,
       saveSettings,
       openSettings: (tab) => openSettings(tab),
       isRunning: () => Boolean(sim?.running),
+      // The board's picture for a store, taken before the card is up — and
+      // only of the desktop on screen.
+      takePicture: async () => {
+        if (id !== workspace.activeTab?.id) return null;
+        const rect = boardRect();
+        if (!rect) return null;
+        const res = await bridge.stores.captureThumb(rect);
+        return res?.ok ? res.token : null;
+      },
     });
   });
 

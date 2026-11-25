@@ -29,8 +29,21 @@
 //     what MAIN reads from the gallery. This window's CSP has no connect-src,
 //     so the index, each entry and each thumbnail (a data: URL) come over the
 //     bridge. Its Open hands the entry to the app window (`gallery:open`).
-//     Without Gallery access, main refuses every read, and the tab says why
-//     with an Allow… that asks the app window to put the question.
+//     ONLY WHILE GALLERY ACCESS IS ON (Jason, 2026-11-22): with it off — or
+//     never answered — the tab is not there at all, and nothing here offers
+//     to turn it on; that is Settings ▸ Gallery's. The web build is always
+//     on. Read again whenever the window comes forward, and main refusing a
+//     read (access withdrawn meanwhile) takes the tab away too.
+//
+//   · ONE TAB PER PRIVATE STORE (the private stores, desktop app only),
+//     after these two, named for the store, in the order Settings ▸
+//     Gallery ▸ Private lists them (the order they were added — a manual
+//     order may come later; nothing here reorders them). Each is drawn by the
+//     same GalleryView over what main reads from it (`stores.view`), each
+//     entry's revisions listed in its detail; Open hands a revision to the
+//     app window (`stores.open`). The strip scrolls sideways when the tabs
+//     outgrow the window. The list is read again whenever the window comes
+//     forward (a store added in Settings appears, one removed goes).
 //
 // Main checks the MRU list and the access setting on every call; this window
 // only draws.
@@ -43,13 +56,21 @@ import { GalleryView } from "./gallery/gallery-view.js";
 import { normalizeIndex } from "./gallery/index-format.js";
 import { entryPageUrl, normalizeEntry } from "./gallery/entry-format.js";
 import { RecentProjectsView } from "./components/recent-projects-view.js";
+import { STORE_ID_RE } from "./stores/store-format.js";
+import { isWeb } from "./web-flavour.js";
+import { storeError } from "./components/store-setup.js";
 
 const bridge = window.chiphippo;
-const TABS = ["recent", "gallery"];
 
 await i18n.init();
 await followFontSize(bridge);
 document.title = t("browse.title");
+
+// A tab per private store, only while main says the stores are on.
+const storesOn = (await bridge.stores?.status?.().catch(() => null))?.enabled === true; // prettier-ignore
+/** The tabs, in order: the two fixed ones, then one per store
+    (`store:<id>`), kept in step with the stores by `syncStoreTabs`. */
+const TABS = ["recent", "gallery"];
 
 /** A bridge answer's value, or a throw the view reports as its failure. */
 const answered = async (call, pick) => {
@@ -66,22 +87,21 @@ const tabList = el("div", {
 });
 const panes = {};
 const tabButtons = {};
-for (const key of TABS) {
-  panes[key] = el("div", {
-    class: "browse-pane",
-    role: "tabpanel",
-    id: `browse-pane-${key}`,
-  });
+/** Make one tab and its pane (not yet in the document). */
+function makeTab(key, label) {
+  const id = `browse-pane-${key.replace(":", "-")}`;
+  panes[key] = el("div", { class: "browse-pane", role: "tabpanel", id });
   tabButtons[key] = el("button", {
     class: "browse-tab",
     type: "button",
     role: "tab",
-    "aria-controls": `browse-pane-${key}`,
-    text: t(`browse.tab.${key}`),
+    "aria-controls": id,
+    text: label,
     onClick: () => show(key),
   });
-  tabList.append(tabButtons[key]);
 }
+for (const key of TABS) makeTab(key, t(`browse.tab.${key}`));
+tabList.append(...TABS.map((k) => tabButtons[k]));
 root.append(tabList, ...TABS.map((k) => panes[k]));
 
 // ── Recent projects ──────────────────────────────────────────────────────────
@@ -149,7 +169,8 @@ new window.MutationObserver(appearanceChanged).observe(
   },
 );
 
-/** Draw the gallery tab — or, refused, the card asking for access. */
+/** Draw the gallery tab — or, refused (access switched off meanwhile),
+    take the tab away. */
 async function loadGallery() {
   const load = ++galleryLoads;
   const index = await bridge.gallery.index();
@@ -158,18 +179,7 @@ async function loadGallery() {
   galleryView = null;
   if (index?.code === "refused") {
     galleryLoaded = false;
-    panes.gallery.append(
-      el("section", { class: "browse-access" }, [
-        el("h2", { class: "browse-access-title", text: t("browse.access.title") }), // prettier-ignore
-        el("p", { class: "browse-access-message", text: t("browse.access.message") }), // prettier-ignore
-        el("button", {
-          class: "gallery-action",
-          type: "button",
-          text: t("browse.access.allow"),
-          onClick: () => void bridge.gallery.askAccess(),
-        }),
-      ]),
-    );
+    setGalleryOn(false);
     return;
   }
   // Only an index that ARRIVED is kept: one that could not be read (offline,
@@ -203,14 +213,13 @@ async function loadGallery() {
       {
         id: "open",
         label: t("gallery.open"),
-        // Refused (access switched to No since the grid was drawn): draw the
-        // tab again, which shows the card asking for access — not a press
-        // that does nothing.
+        // Refused (access switched to No since the grid was drawn): the tab
+        // goes — not a press that does nothing.
         onClick: (entry) =>
           void Promise.resolve(bridge.gallery.open(entry.id)).then((ok) => {
             if (ok === false) {
               galleryLoaded = false;
-              void loadGallery();
+              setGalleryOn(false);
             }
           }),
       },
@@ -236,15 +245,193 @@ async function loadGallery() {
   await view.load();
 }
 
+// ── Private stores ───────────────────────────────────────────────────────────
+/** Each store tab's latest load (a slow read landing after a newer one
+    started — a Refresh, the tab shown again — is dropped). */
+const storeLoads = new Map();
+const storeThumbs = new Map();
+/** The store tabs drawn from a read that ARRIVED: shown again, they keep
+    their search, scroll and open detail — Refresh reads afresh. */
+const storeLoaded = new Set();
+
+/** One revision's line in an entry's detail: when, who, what changed, and
+    Open — the newest marked, and another version made alongside marked. */
+function revisionList(id, entry) {
+  const leaves = new Set(entry.leaves.map((r) => r.rev));
+  return el("section", { class: "browse-store-revs" }, [
+    el("h3", { class: "browse-store-revs-title", text: t("stores.browse.revisions", { count: entry.revs.length }) }), // prettier-ignore
+    entry.forked &&
+      el("p", { class: "browse-store-fork", text: t("stores.browse.forked", { count: entry.leaves.length }) }), // prettier-ignore
+    el(
+      "ol",
+      { class: "browse-store-rev-list" },
+      entry.revs.map((rev) =>
+        el("li", { class: "browse-store-rev" }, [
+          el("span", { class: "browse-store-rev-when", text: formatDate(Date.parse(rev.at), { dateStyle: "medium", timeStyle: "short" }) }), // prettier-ignore
+          el("span", { class: "browse-store-rev-who", text: rev.author || t("stores.browse.someone") }), // prettier-ignore
+          rev.rev === entry.head.rev
+            ? el("span", { class: "browse-store-rev-tag", text: t("stores.browse.latest") }) // prettier-ignore
+            : leaves.has(rev.rev) && el("span", { class: "browse-store-rev-tag browse-store-rev-tag--fork", text: t("stores.browse.otherVersion") }), // prettier-ignore
+          rev.note && el("span", { class: "browse-store-rev-note", text: rev.note }), // prettier-ignore
+          el("button", {
+            class: "gallery-action browse-store-rev-open",
+            type: "button",
+            text: t("gallery.open"),
+            // Each "Open" says which version it opens.
+            "aria-label": t("stores.browse.openVersion", {
+              when: formatDate(Date.parse(rev.at), { dateStyle: "medium", timeStyle: "short" }), // prettier-ignore
+              who: rev.author || t("stores.browse.someone"),
+            }),
+            onClick: () => void bridge.stores.open(id, entry.id, rev.rev),
+          }),
+        ]),
+      ),
+    ),
+  ]);
+}
+
+/** Draw store `id`'s tab: Refresh, then its grid. */
+async function loadStore(id) {
+  const key = `store:${id}`;
+  const pane = panes[key];
+  if (!pane) return;
+  const load = (storeLoads.get(id) ?? 0) + 1;
+  storeLoads.set(id, load);
+  storeLoaded.delete(id);
+  const refresh = el("button", {
+    class: "gallery-action browse-store-refresh",
+    type: "button",
+    text: t("stores.browse.refresh"),
+    onClick: () => void loadStore(id),
+  });
+  const status = el("p", { class: "gallery-status browse-store-status", role: "status", hidden: true }); // prettier-ignore
+  const gridRoot = el("div");
+  pane.replaceChildren(
+    el("div", { class: "browse-store-bar" }, [refresh]),
+    status,
+    gridRoot,
+  );
+  const res = await bridge.stores.view(id);
+  if (storeLoads.get(id) !== load || panes[key] !== pane) return;
+  if (!res?.ok) {
+    status.textContent = storeError(res?.code);
+    status.hidden = false;
+    return;
+  }
+  storeLoaded.add(id);
+  const view = new GalleryView({
+    root: gridRoot,
+    source: {
+      index: async () => ({ entries: res.entries }),
+      entry: async (entryId) => res.entries.find((e) => e.id === entryId) ?? null, // prettier-ignore
+      thumbUrl: (entry) => {
+        if (!entry.head?.thumb) return null;
+        const at = `${id}/${entry.id}/${entry.head.rev}`;
+        return once(storeThumbs, at, async () => {
+          const r = await bridge.stores.thumb(id, entry.id, entry.head.rev);
+          return r?.ok ? r.url : null;
+        });
+      },
+    },
+    // The gallery's words, but for the search box and the empty grid.
+    say: (word, params) =>
+      word === "search" || word === "empty"
+        ? t(`stores.browse.${word}`)
+        : t(`gallery.${word}`, params),
+    actions: [
+      {
+        id: "open",
+        label: t("stores.browse.openLatest"),
+        onClick: (entry) => void bridge.stores.open(id, entry.id, entry.head.rev), // prettier-ignore
+      },
+    ],
+    detail: (entry) => revisionList(id, entry),
+  });
+  await view.load();
+}
+
+/**
+ * Bring the store tabs into step with the stores this computer has added:
+ * one after the fixed tabs per store, in the list's own order; a store gone
+ * takes its tab with it (back to Recent if it was showing); a rename
+ * relabels its tab in place.
+ */
+async function syncStoreTabs() {
+  if (!storesOn) return;
+  let stores;
+  try {
+    stores = (await bridge.stores.list()) ?? [];
+  } catch {
+    return;
+  }
+  const want = stores.map((st) => `store:${st.id}`);
+  for (const key of TABS.filter((k) => k.startsWith("store:"))) {
+    if (want.includes(key)) continue;
+    tabButtons[key].remove();
+    panes[key].remove();
+    storeLoaded.delete(key.slice(6));
+    delete tabButtons[key];
+    delete panes[key];
+    TABS.splice(TABS.indexOf(key), 1);
+    if (current === key) show("recent");
+  }
+  for (const st of stores) {
+    const key = `store:${st.id}`;
+    if (!tabButtons[key]) {
+      makeTab(key, st.name);
+      tabButtons[key].hidden = false;
+      panes[key].hidden = true;
+      tabButtons[key].setAttribute("aria-selected", "false");
+      tabButtons[key].tabIndex = -1;
+      TABS.push(key);
+    }
+    tabButtons[key].textContent = st.name;
+    tabButtons[key].title = st.kind === "github" ? (st.dir ? `${st.repo}/${st.dir}` : st.repo) : (st.path ?? ""); // prettier-ignore
+  }
+  // The list's order, after the two fixed tabs.
+  TABS.splice(2, TABS.length - 2, ...want);
+  tabList.append(...want.map((k) => tabButtons[k]));
+  root.append(...want.map((k) => panes[k]));
+}
+
 // ── Tabs ─────────────────────────────────────────────────────────────────────
 let current = null;
+
+/** Is Gallery access on? Settings ▸ Gallery's answer (main checks it again
+    on every read); the web build is always on. */
+async function galleryAccessOn() {
+  if (isWeb()) return true;
+  try {
+    return (await bridge.settings.get())?.galleryAccess === "yes";
+  } catch {
+    return false;
+  }
+}
+
+/** Show or take away the Gallery tab. Taken away while showing, the window
+    goes back to Recent Projects. */
+function setGalleryOn(on) {
+  tabButtons.gallery.hidden = !on;
+  if (!on) {
+    galleryLoaded = false;
+    galleryView = null;
+    panes.gallery.replaceChildren();
+    if (current === "gallery") show("recent");
+  }
+}
+
+/** The tabs a press or an arrow key can reach now. */
+const shownTabs = () => TABS.filter((k) => !tabButtons[k].hidden);
 
 /** Show a tab. The Recent list is read again every time it is shown (a save
     or an open in the app window changes it); the gallery once, unless it was
     refused or failed — then again, since access may have been given (or the
     network come back) meanwhile. */
 function show(key) {
-  const which = TABS.includes(key) ? key : TABS[0];
+  // Main names a store as "stores:<id>"; the tab's own key is "store:<id>".
+  const [base, sub] = String(key ?? "").split(":");
+  const asked = base === "stores" || base === "store" ? (STORE_ID_RE.test(sub ?? "") ? `store:${sub}` : null) : base; // prettier-ignore
+  const which = shownTabs().includes(asked) ? asked : TABS[0];
   current = which;
   for (const k of TABS) {
     const on = k === which;
@@ -253,7 +440,14 @@ function show(key) {
     tabButtons[k].classList.toggle("browse-tab--active", on);
     tabButtons[k].tabIndex = on ? 0 : -1;
   }
+  // A tab scrolled out of sight in a long strip is brought into it.
+  tabButtons[which].scrollIntoView?.({ block: "nearest", inline: "nearest" });
   if (which === "recent") void recent.refresh();
+  // A store is read when its tab is first shown (or its last read failed);
+  // after that its Refresh reads it again — a friend's save arrives through
+  // their sync, not through this window.
+  else if (which.startsWith("store:") && !storeLoaded.has(which.slice(6)))
+    void loadStore(which.slice(6));
   else if (!galleryLoaded) void loadGallery();
 }
 
@@ -262,19 +456,35 @@ tabList.addEventListener("keydown", (event) => {
   if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
   event.preventDefault();
   const step = event.key === "ArrowRight" ? 1 : -1;
-  const next = TABS[(TABS.indexOf(current) + step + TABS.length) % TABS.length];
+  const tabs = shownTabs();
+  const next = tabs[(tabs.indexOf(current) + step + tabs.length) % tabs.length];
   show(next);
   tabButtons[next].focus();
 });
 
 // Main names the tab: in the address when it opens the window, by push when
 // it brings an open one forward.
+// The Gallery tab only with access on — asked BEFORE the first tab is shown,
+// so a window opened on it without access opens on Recent instead.
+setGalleryOn(await galleryAccessOn());
+await syncStoreTabs();
 show(new URLSearchParams(location.search).get("tab") ?? "recent");
-window.addEventListener("chiphippo:browse-tab", (e) => show(e.detail));
+// Brought forward on a store just added (Settings' Browse), the list is read
+// first, so that store has its tab.
+window.addEventListener("chiphippo:browse-tab", async (e) => {
+  if (String(e.detail ?? "").startsWith("stores:")) await syncStoreTabs();
+  show(e.detail);
+});
 // Coming back to the window (after a save in the app window, say) shows the
 // recent list as it is now.
 window.addEventListener("focus", () => {
   if (current === "recent") void recent.refresh();
+  // Gallery access may have been changed in Settings meanwhile.
+  void galleryAccessOn().then((on) => {
+    if (on !== !tabButtons.gallery.hidden) setGalleryOn(on);
+  });
+  // …and the stores may have been added, removed or renamed there.
+  void syncStoreTabs();
 });
 
 // Escape closes the window, as the guide's does.

@@ -82,7 +82,7 @@
       "exportDigital": "Digital Circuit…",
       "properties": "Desktop Properties…",
       "delete": "Delete Desktop",
-      "share": "Share to Gallery…"
+      "share": "Share To…"
     },
     "edit": {
       "title": "Edit",
@@ -146,6 +146,14 @@
     },
     "exportDigital": {
       "title": "Export to Digital"
+    },
+    "storeCreate": {
+      "title": "Where should the store's folder go?",
+      "button": "Make the Store Here"
+    },
+    "storeJoin": {
+      "title": "Choose the shared folder",
+      "button": "Use This Folder"
     }
   },
   "toolbar": {
@@ -419,7 +427,7 @@
     },
     "gallery": {
       "access": "Gallery access",
-      "accessHint": "Whether Chip Hippo may read the gallery at chiphippo.com/gallery: its list of designs, their pictures, and a design when you open one. Nothing of yours is sent. Asked the first time you browse the gallery.",
+      "accessHint": "Whether Chip Hippo may read the gallery at chiphippo.com/gallery: its list of designs, their pictures, and a design when you open one. Nothing of yours is sent. File ▸ Browse Projects shows its Gallery tab only while this is Yes.",
       "share": "Share consent",
       "shareHint": "Whether sharing a design to the gallery shows what will be published and asks first (Ask), shows it in one line (Yes), or is switched off (No).",
       "shares": "Your shares",
@@ -440,7 +448,12 @@
       "remove": "Remove “{title}” from this list",
       "yes": "Yes",
       "no": "No",
-      "ask": "Ask"
+      "ask": "Ask",
+      "tab": {
+        "public": "Public",
+        "private": "Private"
+      },
+      "tabsLabel": "Gallery"
     }
   },
   "palette": {
@@ -3017,6 +3030,10 @@
         "refused": "Sharing isn't available here.",
         "unavailable": "The gallery couldn't be reached. Check the connection and try again."
       }
+    },
+    "shareTo": {
+      "title": "Share To",
+      "where": "Share to"
     }
   },
   "browse": {
@@ -3036,11 +3053,242 @@
         "other": "{count} desktops"
       },
       "remove": "Remove {name} from recent projects"
-    },
-    "access": {
-      "title": "Gallery access is off",
-      "message": "The gallery is a collection of circuits at chiphippo.com. Chip Hippo asks before it reads anything from there.",
-      "allow": "Allow…"
     }
+  },
+  "stores": {
+    "title": "Private stores",
+    "hint": "Keep designs that only you and the friends you choose can see, and work on them together. A store lives in a folder you sync (Google Drive, Dropbox, OneDrive, iCloud Drive) or a private GitHub repository — Chip Hippo runs no server for it.",
+    "add": "Add Store…",
+    "empty": "No private stores yet.",
+    "copyLink": "Copy link",
+    "copied": "Copied",
+    "linkLabel": "The store's link",
+    "linkHintFolder": "Send this link to a friend. They also need the folder itself: share it with them in {app} first.",
+    "linkHintGitHub": "Send this link to a friend. Invite their GitHub account first, so the store lets them in.",
+    "invite": "Invite",
+    "peopleOnGitHub": "Manage who has access on GitHub",
+    "browseStore": "Browse",
+    "showFolder": "Show folder",
+    "showRepo": "Open on GitHub",
+    "remove": "Remove",
+    "removeAsk": "Remove “{name}” from this computer? Nothing is deleted: the store and its designs stay where they are, for you and everyone it is shared with, and you can add it again from its link.",
+    "removeConfirm": "Remove from This Computer",
+    "signOut": "Sign out",
+    "back": "Back",
+    "done": "Done",
+    "whereFolder": "{app} · {path}",
+    "whereGitHub": "GitHub · {repo}",
+    "repoDescription": "Chip Hippo designs, shared",
+    "error": {
+      "missing": "That store could not be found. Its folder may have moved, or it has not finished syncing to this computer yet.",
+      "noAccess": "This store is not shared with you (or it no longer exists).",
+      "signedOut": "Sign in to GitHub again to reach this store.",
+      "rateLimited": "GitHub asked Chip Hippo to slow down. Wait a few minutes and try again.",
+      "wrongStore": "That folder holds a different store from the one the link is for.",
+      "ambiguous": "That folder holds more than one store. Choose the store's own folder.",
+      "notStore": "There is no Chip Hippo store in that repository.",
+      "behind": "Someone saved a newer version first.",
+      "newer": "This store was made by a newer Chip Hippo. Update Chip Hippo to save to it.",
+      "full": "This computer already has as many stores as it can keep. Remove one first.",
+      "denied": "Chip Hippo is not allowed to write in that folder.",
+      "tooBig": "This design is too large for a store.",
+      "romTooBig": "This design's ROM contents are too large for a store.",
+      "invalid": "That cannot be saved as it is. Check the title and your name.",
+      "noUser": "GitHub has no account by that name.",
+      "nameTaken": "Your GitHub account already has repositories by that name. Try another name.",
+      "notPrivate": "GitHub made the repository public, so Chip Hippo did not use it. Check your GitHub account's settings.",
+      "notConfigured": "GitHub stores are not available in this version of Chip Hippo yet.",
+      "noKeychain": "This computer has no secure place to keep a GitHub sign-in, so Chip Hippo cannot stay signed in.",
+      "notInvited": "This store has not been shared with your GitHub account yet.",
+      "notSynced": "That folder does not hold this store. If it was only just shared with you, it may still be syncing; wait a minute and try again.",
+      "signInDenied": "The GitHub sign-in did not finish. Try again.",
+      "cancelled": "The sign-in was cancelled.",
+      "unavailable": "That did not work. Check your connection and try again.",
+      "badFolder": "Type a folder name for the store, such as chiphippo. Use letters, numbers, dots, dashes and underscores, with / between folders.",
+      "badLink": "That isn't a complete Chip Hippo store link. Copy the whole link from the message and try again.",
+      "badLogin": "That isn't a GitHub username. Usernames use letters, numbers and dashes.",
+      "pickPublic": "That repository is public: a store in it would publish every design. Choose a private one.",
+      "storePublic": "This store's repository is public, so anything saved there could be seen by anyone. It has to be private before Chip Hippo will use it — ask its owner to make it private.",
+      "noPush": "Your GitHub account can only read that repository, so designs can't be saved to it.",
+      "moved": "This store's repository was renamed or moved on GitHub. Ask its owner for a new link.",
+      "tooLarge": "That repository is too large for GitHub to list in one go. Keep the store in a folder of its own.",
+      "alreadyAdded": "This computer already has that store, kept somewhere else. To add it from here, remove the one in the list first."
+    },
+    "setup": {
+      "linkCardTitle": "Add a Private Store",
+      "startTitle": "Add a private store",
+      "startIntro": "A private store keeps designs that only you and the friends you share it with can see. Everyone can open them, change them and save new versions. It lives on a service you already use — choose one:",
+      "choice": {
+        "folder": {
+          "title": "A folder you sync",
+          "text": "Google Drive, Dropbox, OneDrive, iCloud Drive or any shared folder. No sign-in needed."
+        },
+        "github": {
+          "title": "GitHub",
+          "text": "A free private repository — a new one Chip Hippo makes for you, or one you already have. Invite friends by their GitHub name."
+        },
+        "link": {
+          "title": "I have a link from a friend",
+          "text": "Join a store someone has shared with you."
+        },
+        "local": {
+          "title": "A store folder already on this computer",
+          "text": "Restore an existing local store location."
+        }
+      },
+      "nameLabel": "Store name",
+      "namePlaceholder": "e.g. Bench club",
+      "browse": "Show Its Designs",
+      "provider": {
+        "gdrive": "Google Drive",
+        "dropbox": "Dropbox",
+        "onedrive": "OneDrive",
+        "icloud": "iCloud Drive",
+        "other": "Another synced folder"
+      },
+      "folder": {
+        "title": "Make a store in a synced folder",
+        "intro": "Chip Hippo makes a folder for the store inside the folder your cloud service keeps in step across computers. Your service shares it with your friends; Chip Hippo just reads and writes the designs in it.",
+        "provider": "Which service?",
+        "noApp": "Don't have its app on this computer yet?",
+        "getApp": "Get {app}",
+        "where": {
+          "gdrive": "Install Google Drive for desktop and sign in. Then, when Chip Hippo asks where, choose “My Drive” (or a folder inside it).",
+          "dropbox": "Install the Dropbox app and sign in. Then, when Chip Hippo asks where, choose your Dropbox folder (or a folder inside it).",
+          "onedrive": "Install OneDrive and sign in. Then, when Chip Hippo asks where, choose your OneDrive folder (or a folder inside it).",
+          "icloud": "Turn on iCloud Drive on this Mac. Then, when Chip Hippo asks where, choose iCloud Drive (or a folder inside it). Your friends need iCloud Drive too.",
+          "other": "Any folder that is kept in step with your friends' computers works — Syncthing, a shared network drive, or another sync service."
+        },
+        "choose": "Choose Where…",
+        "madeTitle": "“{name}” is ready",
+        "madeWhere": "Its folder is {path}.",
+        "share": {
+          "gdrive": "In Google Drive, share the new folder with your friends (right-click it ▸ Share) and give them Editor access.",
+          "dropbox": "In Dropbox, share the new folder with your friends and let them edit.",
+          "onedrive": "In OneDrive, share the new folder with your friends and let them edit.",
+          "icloud": "In Finder, share the new folder with your friends (right-click it ▸ Share) and let them make changes.",
+          "other": "Make sure the new folder reaches your friends' computers, and that they can write in it."
+        },
+        "howToShare": "How to share a folder",
+        "sendLink": "Send your friends this link. When they open it, Chip Hippo walks them through adding the store.",
+        "friendSees": "The link says which store it is and where it lives — no password and nothing private. Only people you shared the folder with can open the designs."
+      },
+      "github": {
+        "title": "Make a store on GitHub",
+        "intro": "Chip Hippo makes a private repository on your GitHub account to keep the designs in, and invites the friends you name. GitHub is free; your friends need a free account too.",
+        "signInWhy": "First, sign in to GitHub. You type a short code on GitHub's own page — Chip Hippo never sees your password.",
+        "noAccount": "No GitHub account?",
+        "signUp": "Make one free",
+        "signIn": "Sign In to GitHub",
+        "typeCode": "Type this code on GitHub's page, then approve Chip Hippo:",
+        "copyAndOpen": "Copy Code and Open GitHub",
+        "waiting": "Waiting for GitHub… Come back here when you have approved it.",
+        "signedIn": "Signed in to GitHub.",
+        "signedInAs": "Signed in to GitHub as @{login}.",
+        "private": "The repository is private: only you and the people you invite can see it. Chip Hippo asks GitHub for access to your private repositories, which is the only way it can reach this one.",
+        "make": "Make the Store",
+        "making": "Making it…",
+        "madeWhere": "It lives in the private repository {repo}.",
+        "sendLink": "Then send them this link. When they open it, Chip Hippo signs them in and accepts the invitation for them.",
+        "friendSees": "The link says which store it is — no password and nothing private. Only the accounts you invited can open the designs.",
+        "where": "Where should the store go?",
+        "whereNew": "A new private repository",
+        "whereExisting": "A folder in one of my repositories",
+        "repo": "Repository",
+        "repoLoading": "Loading your repositories…",
+        "repoNone": "No private repository you can write to was found. Public repositories aren't offered: a store in one would publish every design.",
+        "privateOnly": "Only private repositories you can write to are listed: a store in a public one would publish every design.",
+        "folder": "Folder in the repository",
+        "folderHint": "The store's files go in this folder, apart from everything else the repository holds. If the folder already holds a Chip Hippo store, that store is added instead.",
+        "repoRetry": "Try again"
+      },
+      "invite": {
+        "intro": "Invite friends by their GitHub username:",
+        "label": "A friend's GitHub username",
+        "placeholder": "their-username",
+        "invite": "Invite",
+        "pending": "invited — waiting for them"
+      },
+      "link": {
+        "title": "Join a friend's store",
+        "intro": "Paste the link your friend sent you:",
+        "label": "The store's link",
+        "placeholder": "https://chiphippo.com/store/#…",
+        "next": "Next",
+        "bad": "That is not a Chip Hippo store link. Copy the whole link from your friend's message and try again."
+      },
+      "join": {
+        "title": "Join “{name}”",
+        "folderIntro": "This store is a folder your friend shared with you in {app}. Three steps:",
+        "accept": {
+          "gdrive": "Open the email from Google Drive and open the shared folder.",
+          "dropbox": "Open the email from Dropbox and add the shared folder to your Dropbox.",
+          "onedrive": "Open the email from OneDrive and open the shared folder.",
+          "icloud": "Open the iCloud Drive invitation your friend sent and accept it.",
+          "other": "Make sure your friend's folder has reached this computer."
+        },
+        "sync": {
+          "gdrive": "In Google Drive, add it to your Drive: right-click the folder ▸ Organise ▸ Add shortcut, and choose My Drive. Google Drive for desktop must be installed on this computer.",
+          "dropbox": "Check the Dropbox app on this computer has synced it.",
+          "onedrive": "In OneDrive, choose “Add shortcut to My files” on the folder, so it syncs to this computer.",
+          "icloud": "It appears in iCloud Drive on this Mac, under the name your friend gave it.",
+          "other": "It should be in a folder on this computer that stays in step with your friend's."
+        },
+        "pick": "Choose that folder. (Choosing the folder just above it works too.)",
+        "chooseFolder": "Choose the Folder…",
+        "githubIntro": "This store is the private GitHub repository {repo}. Sign in with the GitHub account your friend invited, then join.",
+        "join": "Join the Store",
+        "notInvited": "You are signed in as @{login}, but this store has not been shared with that account yet. Ask your friend to invite @{login}, then press Join again.",
+        "folderIntroOther": "This store is a folder your friend shared with you. Three steps:"
+      },
+      "joinedTitle": "“{name}” is added",
+      "joinedText": "It has its own tab in File ▸ Browse Projects. Save a desktop to it with Desktop ▸ Save to Private Store…",
+      "local": {
+        "title": "Add a store folder already on this computer",
+        "intro": "Choose a store's folder — one you removed from this list, or one that synced here from another of your computers. Which service keeps it in step? (It decides what your friends are told when you share it.)"
+      }
+    },
+    "browse": {
+      "refresh": "Refresh",
+      "openLatest": "Open Latest",
+      "revisions": {
+        "one": "{count} version",
+        "other": "{count} versions"
+      },
+      "forked": {
+        "one": "{count} people saved from the same version, so both are kept.",
+        "other": "{count} people saved from the same version, so each is kept. Open the one you want to carry on from."
+      },
+      "latest": "latest",
+      "otherVersion": "another version",
+      "someone": "someone",
+      "search": "Search this store",
+      "empty": "Nothing in this store yet. Save a desktop to it with Desktop ▸ Save to Private Store…",
+      "openVersion": "Open the version from {when} by {who}"
+    },
+    "save": {
+      "intro": "Save this desktop where the friends you share the store with can open it and carry on.",
+      "store": "Store",
+      "saveAs": "Save as",
+      "asVersion": "A new version of “{title}”",
+      "asNew": "A new design",
+      "noteLabel": "What changed? (optional)",
+      "notePlaceholder": "e.g. moved the clock to a 555",
+      "private": "Only people the store is shared with can see it.",
+      "running": "Stop the circuit to save it.",
+      "save": "Save",
+      "saving": "Saving…",
+      "behind": "{who} saved a newer version ({when}) after the one you opened. You can open theirs and carry on from it, or save yours alongside — both versions are then kept.",
+      "openTheirs": "Open Theirs",
+      "saveAlongside": "Save Mine Alongside",
+      "savedTitle": "Saved",
+      "saved": "Saved to “{store}”.",
+      "noStoreTitle": "No private store yet",
+      "noStore": "Add a private store first, in Settings ▸ Gallery ▸ Private stores.",
+      "linkLost": "The design this desktop came from couldn't be read just now (offline, or not synced yet), so it will be saved as a new design."
+    },
+    "linkCopied": "Link copied.",
+    "linkHintFolderOther": "Send this link to a friend. They also need the folder itself: make sure it reaches their computer and that they can save in it.",
+    "actionFor": "{action}: {name}"
   }
 }

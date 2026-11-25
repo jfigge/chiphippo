@@ -18,11 +18,13 @@
  */
 
 // gallery-open.js — the app window's half of the gallery (the gallery work):
-// the Browse window's Gallery tab with its one-time access question, and the questions a
-// gallery design is asked on its way onto the desk (ProjectWorkspace.openGalleryEntry's `prepare` and
-// `chooseRevisions` hooks). A `chiphippo://gallery/<id>` link (Phase 4) asks
-// the same access question (`galleryAccess`) before it opens the entry. Every question is a PopupManager card, settled
-// on every way out, so an awaiting caller cannot hang.
+// the one-time access question a `chiphippo://gallery/<id>` link (Phase 4)
+// asks before it opens the entry (`galleryAccess`), and the questions a
+// gallery design is asked on its way onto the desk
+// (ProjectWorkspace.openGalleryEntry's `prepare` and `chooseRevisions`
+// hooks). The Browse window never asks: its Gallery tab is there only while
+// access is on (Jason, 2026-11-22). Every question is a PopupManager card,
+// settled on every way out, so an awaiting caller cannot hang.
 //
 //   · ACCESS (the plan's D8): the desktop app reads chiphippo.com only after
 //     the user says yes, ONCE — the answer is stored (`galleryAccess`) and
@@ -90,18 +92,6 @@ export async function galleryAccess({
   // Settings ▸ Gallery is where it is changed.
   await saveSettings({ galleryAccess: answer === "yes" ? "yes" : "no" });
   return answer === "yes";
-}
-
-/**
- * The Browse window's GALLERY tab: ask for access first the one time it has
- * never been asked, then open (or bring forward) the window on that tab. What
- * the tab's own Allow… button relays here (`chiphippo:browse-ask-access`).
- * @param {{bridge: object} & Parameters<typeof galleryAccess>[0]} deps
- * @returns {Promise<boolean>} whether the window was opened.
- */
-export async function browseGallery({ bridge, ...deps }) {
-  if (!(await galleryAccess(deps))) return false;
-  return Boolean(await bridge.gallery?.show?.("gallery"));
 }
 
 /** "3 parts, 2 wires" — what a load check found missing, in a line. */

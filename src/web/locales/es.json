@@ -56,7 +56,7 @@
       "exportDigital": "Circuito de Digital…",
       "properties": "Propiedades del escritorio…",
       "delete": "Eliminar escritorio",
-      "share": "Compartir en la galería…"
+      "share": "Compartir…"
     },
     "edit": {
       "title": "Edición",
@@ -120,6 +120,14 @@
     },
     "exportDigital": {
       "title": "Exportar a Digital"
+    },
+    "storeCreate": {
+      "title": "¿Dónde debe ir la carpeta de la colección?",
+      "button": "Crear la colección aquí"
+    },
+    "storeJoin": {
+      "title": "Elige la carpeta compartida",
+      "button": "Usar esta carpeta"
     }
   },
   "toolbar": {
@@ -393,7 +401,7 @@
     },
     "gallery": {
       "access": "Acceso a la galería",
-      "accessHint": "Si Chip Hippo puede leer la galería en chiphippo.com/gallery: la lista de diseños, sus imágenes y un diseño cuando lo abres. No se envía nada tuyo. Se pregunta la primera vez que exploras la galería.",
+      "accessHint": "Si Chip Hippo puede leer la galería en chiphippo.com/gallery: su lista de diseños, sus imágenes y un diseño cuando lo abres. No se envía nada tuyo. Archivo ▸ Explorar proyectos muestra la pestaña Galería solo mientras esto esté en Sí.",
       "share": "Consentimiento para compartir",
       "shareHint": "Si compartir un diseño en la galería muestra lo que se publicará y pregunta antes (Preguntar), lo muestra en una línea (Sí) o está desactivado (No).",
       "shares": "Tus envíos",
@@ -414,7 +422,12 @@
       "remove": "Quitar «{title}» de esta lista",
       "yes": "Sí",
       "no": "No",
-      "ask": "Preguntar"
+      "ask": "Preguntar",
+      "tab": {
+        "public": "Pública",
+        "private": "Privada"
+      },
+      "tabsLabel": "Galería"
     }
   },
   "palette": {
@@ -2994,6 +3007,10 @@
         "refused": "Compartir no está disponible aquí.",
         "unavailable": "No se ha podido conectar con la galería. Comprueba la conexión y vuelve a intentarlo."
       }
+    },
+    "shareTo": {
+      "title": "Compartir",
+      "where": "Compartir en"
     }
   },
   "browse": {
@@ -3013,11 +3030,242 @@
         "other": "{count} escritorios"
       },
       "remove": "Quitar {name} de los proyectos recientes"
-    },
-    "access": {
-      "title": "El acceso a la galería está desactivado",
-      "message": "La galería es una colección de circuitos en chiphippo.com. Chip Hippo pregunta antes de leer nada de allí.",
-      "allow": "Permitir…"
     }
+  },
+  "stores": {
+    "title": "Colecciones privadas",
+    "hint": "Guarda diseños que solo pueden ver tú y los amigos que elijas, y trabaja en ellos en equipo. Una colección vive en una carpeta que sincronizas (Google Drive, Dropbox, OneDrive, iCloud Drive) o en un repositorio privado de GitHub; Chip Hippo no usa ningún servidor propio para ella.",
+    "add": "Añadir colección…",
+    "empty": "Aún no hay colecciones privadas.",
+    "copyLink": "Copiar enlace",
+    "copied": "Copiado",
+    "linkLabel": "El enlace de la colección",
+    "linkHintFolder": "Envía este enlace a un amigo. También necesita la carpeta en sí: compártela antes con él en {app}.",
+    "linkHintGitHub": "Envía este enlace a un amigo. Invita antes a su cuenta de GitHub, para que la colección le deje entrar.",
+    "invite": "Invitar",
+    "peopleOnGitHub": "Gestionar quién tiene acceso en GitHub",
+    "browseStore": "Explorar",
+    "showFolder": "Mostrar carpeta",
+    "showRepo": "Abrir en GitHub",
+    "remove": "Quitar",
+    "removeAsk": "¿Quitar «{name}» de este ordenador? No se elimina nada: la colección y sus diseños se quedan donde están, para ti y para todos con quienes está compartida, y puedes volver a añadirla desde su enlace.",
+    "removeConfirm": "Quitar de este ordenador",
+    "signOut": "Cerrar sesión",
+    "back": "Atrás",
+    "done": "Listo",
+    "whereFolder": "{app} · {path}",
+    "whereGitHub": "GitHub · {repo}",
+    "repoDescription": "Diseños de Chip Hippo, compartidos",
+    "error": {
+      "missing": "No se ha encontrado esa colección. Puede que su carpeta se haya movido o que aún no haya terminado de sincronizarse con este ordenador.",
+      "noAccess": "Esta colección no está compartida contigo (o ya no existe).",
+      "signedOut": "Vuelve a iniciar sesión en GitHub para acceder a esta colección.",
+      "rateLimited": "GitHub ha pedido a Chip Hippo que vaya más despacio. Espera unos minutos y vuelve a intentarlo.",
+      "wrongStore": "Esa carpeta contiene una colección distinta de la del enlace.",
+      "ambiguous": "Esa carpeta contiene más de una colección. Elige la carpeta propia de la colección.",
+      "notStore": "No hay ninguna colección de Chip Hippo en ese repositorio.",
+      "behind": "Alguien guardó antes una versión más reciente.",
+      "newer": "Esta colección se creó con una versión más reciente de Chip Hippo. Actualiza Chip Hippo para guardar en ella.",
+      "full": "Este ordenador ya tiene tantas colecciones como puede guardar. Quita una primero.",
+      "denied": "Chip Hippo no tiene permiso para escribir en esa carpeta.",
+      "tooBig": "Este diseño es demasiado grande para una colección.",
+      "romTooBig": "El contenido de las ROM de este diseño es demasiado grande para una colección.",
+      "invalid": "No se puede guardar tal como está. Revisa el título y tu nombre.",
+      "noUser": "GitHub no tiene ninguna cuenta con ese nombre.",
+      "nameTaken": "Tu cuenta de GitHub ya tiene repositorios con ese nombre. Prueba con otro nombre.",
+      "notPrivate": "GitHub hizo público el repositorio, así que Chip Hippo no lo usó. Revisa la configuración de tu cuenta de GitHub.",
+      "notConfigured": "Las colecciones en GitHub aún no están disponibles en esta versión de Chip Hippo.",
+      "noKeychain": "Este ordenador no tiene un lugar seguro donde guardar un inicio de sesión de GitHub, así que Chip Hippo no puede mantener la sesión iniciada.",
+      "notInvited": "Esta colección aún no se ha compartido con tu cuenta de GitHub.",
+      "notSynced": "Esa carpeta no contiene esta colección. Si te la acaban de compartir, puede que aún se esté sincronizando; espera un minuto y vuelve a intentarlo.",
+      "signInDenied": "El inicio de sesión en GitHub no terminó. Vuelve a intentarlo.",
+      "cancelled": "Se canceló el inicio de sesión.",
+      "unavailable": "No ha funcionado. Comprueba tu conexión y vuelve a intentarlo.",
+      "badFolder": "Escribe un nombre de carpeta para la colección, por ejemplo chiphippo. Usa letras, números, puntos, guiones y guiones bajos, con / entre carpetas.",
+      "badLink": "Ese no es un enlace completo a una colección de Chip Hippo. Copia el enlace entero del mensaje y vuelve a intentarlo.",
+      "badLogin": "Ese no es un nombre de usuario de GitHub. Los nombres de usuario usan letras, números y guiones.",
+      "pickPublic": "Ese repositorio es público: una colección en él publicaría todos los diseños. Elige uno privado.",
+      "storePublic": "El repositorio de esta colección es público, así que cualquiera podría ver lo que se guarde allí. Tiene que ser privado para que Chip Hippo lo use: pide a su dueño que lo haga privado.",
+      "noPush": "Tu cuenta de GitHub solo puede leer ese repositorio, así que no se pueden guardar diseños en él.",
+      "moved": "El repositorio de esta colección se renombró o se movió en GitHub. Pide a su dueño un enlace nuevo.",
+      "tooLarge": "Ese repositorio es demasiado grande para que GitHub lo liste de una vez. Pon la colección en una carpeta propia.",
+      "alreadyAdded": "Este ordenador ya tiene esa colección, guardada en otro lugar. Para añadirla desde aquí, quita primero la de la lista."
+    },
+    "setup": {
+      "linkCardTitle": "Añadir una colección privada",
+      "startTitle": "Añadir una colección privada",
+      "startIntro": "Una colección privada guarda diseños que solo pueden ver tú y los amigos con quienes la compartas. Todos pueden abrirlos, cambiarlos y guardar versiones nuevas. Vive en un servicio que ya usas; elige uno:",
+      "choice": {
+        "folder": {
+          "title": "Una carpeta que sincronizas",
+          "text": "Google Drive, Dropbox, OneDrive, iCloud Drive o cualquier carpeta compartida. No hace falta iniciar sesión."
+        },
+        "github": {
+          "title": "GitHub",
+          "text": "Un repositorio privado gratuito: uno nuevo que Chip Hippo crea por ti, o uno que ya tengas. Invita a tus amigos por su nombre de GitHub."
+        },
+        "link": {
+          "title": "Tengo un enlace de un amigo",
+          "text": "Únete a una colección que alguien ha compartido contigo."
+        },
+        "local": {
+          "title": "Una carpeta de colección que ya está en este ordenador",
+          "text": "Restaura la ubicación local de una colección existente."
+        }
+      },
+      "nameLabel": "Nombre de la colección",
+      "namePlaceholder": "p. ej. Club de electrónica",
+      "browse": "Ver sus diseños",
+      "provider": {
+        "gdrive": "Google Drive",
+        "dropbox": "Dropbox",
+        "onedrive": "OneDrive",
+        "icloud": "iCloud Drive",
+        "other": "Otra carpeta sincronizada"
+      },
+      "folder": {
+        "title": "Crear una colección en una carpeta sincronizada",
+        "intro": "Chip Hippo crea una carpeta para la colección dentro de la carpeta que tu servicio en la nube mantiene sincronizada entre tus ordenadores. Tu servicio la comparte con tus amigos; Chip Hippo solo lee y escribe los diseños que contiene.",
+        "provider": "¿Qué servicio?",
+        "noApp": "¿Aún no tienes su aplicación en este ordenador?",
+        "getApp": "Descargar {app}",
+        "where": {
+          "gdrive": "Instala Google Drive for desktop e inicia sesión. Después, cuando Chip Hippo pregunte dónde, elige «Mi unidad» (o una carpeta dentro de ella).",
+          "dropbox": "Instala la aplicación de Dropbox e inicia sesión. Después, cuando Chip Hippo pregunte dónde, elige tu carpeta de Dropbox (o una carpeta dentro de ella).",
+          "onedrive": "Instala OneDrive e inicia sesión. Después, cuando Chip Hippo pregunte dónde, elige tu carpeta de OneDrive (o una carpeta dentro de ella).",
+          "icloud": "Activa iCloud Drive en este Mac. Después, cuando Chip Hippo pregunte dónde, elige iCloud Drive (o una carpeta dentro de él). Tus amigos también necesitan iCloud Drive.",
+          "other": "Sirve cualquier carpeta que se mantenga sincronizada con los ordenadores de tus amigos: Syncthing, una unidad de red compartida u otro servicio de sincronización."
+        },
+        "choose": "Elegir dónde…",
+        "madeTitle": "«{name}» está lista",
+        "madeWhere": "Su carpeta es {path}.",
+        "share": {
+          "gdrive": "En Google Drive, comparte la nueva carpeta con tus amigos (clic derecho en ella ▸ Compartir) y dales acceso de Editor.",
+          "dropbox": "En Dropbox, comparte la nueva carpeta con tus amigos y permíteles editar.",
+          "onedrive": "En OneDrive, comparte la nueva carpeta con tus amigos y permíteles editar.",
+          "icloud": "En el Finder, comparte la nueva carpeta con tus amigos (clic derecho en ella ▸ Compartir) y permíteles hacer cambios.",
+          "other": "Asegúrate de que la nueva carpeta llegue a los ordenadores de tus amigos y de que puedan escribir en ella."
+        },
+        "howToShare": "Cómo compartir una carpeta",
+        "sendLink": "Envía este enlace a tus amigos. Cuando lo abran, Chip Hippo les guiará paso a paso para añadir la colección.",
+        "friendSees": "El enlace dice qué colección es y dónde está: ni contraseña ni nada privado. Solo las personas con quienes compartiste la carpeta pueden abrir los diseños."
+      },
+      "github": {
+        "title": "Crear una colección en GitHub",
+        "intro": "Chip Hippo crea un repositorio privado en tu cuenta de GitHub para guardar los diseños e invita a los amigos que indiques. GitHub es gratuito; tus amigos también necesitan una cuenta gratuita.",
+        "signInWhy": "Primero, inicia sesión en GitHub. Escribirás un código corto en la propia página de GitHub; Chip Hippo nunca ve tu contraseña.",
+        "noAccount": "¿No tienes cuenta de GitHub?",
+        "signUp": "Crea una gratis",
+        "signIn": "Iniciar sesión en GitHub",
+        "typeCode": "Escribe este código en la página de GitHub y luego autoriza a Chip Hippo:",
+        "copyAndOpen": "Copiar código y abrir GitHub",
+        "waiting": "Esperando a GitHub… Vuelve aquí cuando lo hayas autorizado.",
+        "signedIn": "Sesión iniciada en GitHub.",
+        "signedInAs": "Sesión iniciada en GitHub como @{login}.",
+        "private": "El repositorio es privado: solo pueden verlo tú y las personas que invites. Chip Hippo pide a GitHub acceso a tus repositorios privados, que es la única forma de llegar a este.",
+        "make": "Crear la colección",
+        "making": "Creándola…",
+        "madeWhere": "Está en el repositorio privado {repo}.",
+        "sendLink": "Después, envíales este enlace. Cuando lo abran, Chip Hippo les hará iniciar sesión y aceptará la invitación por ellos.",
+        "friendSees": "El enlace dice qué colección es: ni contraseña ni nada privado. Solo las cuentas que invitaste pueden abrir los diseños.",
+        "where": "¿Dónde debe ir la colección?",
+        "whereNew": "En un repositorio privado nuevo",
+        "whereExisting": "En una carpeta de uno de mis repositorios",
+        "repo": "Repositorio",
+        "repoLoading": "Cargando tus repositorios…",
+        "repoNone": "No se encontró ningún repositorio privado en el que puedas escribir. No se ofrecen repositorios públicos: una colección en uno publicaría todos los diseños.",
+        "privateOnly": "Solo se muestran los repositorios privados en los que puedes escribir: una colección en uno público publicaría todos los diseños.",
+        "folder": "Carpeta del repositorio",
+        "folderHint": "Los archivos de la colección van en esta carpeta, aparte de todo lo demás del repositorio. Si la carpeta ya tiene una colección de Chip Hippo, se añade esa.",
+        "repoRetry": "Reintentar"
+      },
+      "invite": {
+        "intro": "Invita a tus amigos por su nombre de usuario de GitHub:",
+        "label": "El nombre de usuario de GitHub de un amigo",
+        "placeholder": "su-usuario",
+        "invite": "Invitar",
+        "pending": "invitado: esperando su respuesta"
+      },
+      "link": {
+        "title": "Unirse a la colección de un amigo",
+        "intro": "Pega el enlace que te envió tu amigo:",
+        "label": "El enlace de la colección",
+        "placeholder": "https://chiphippo.com/store/#…",
+        "next": "Siguiente",
+        "bad": "Eso no es un enlace de colección de Chip Hippo. Copia el enlace completo del mensaje de tu amigo y vuelve a intentarlo."
+      },
+      "join": {
+        "title": "Unirse a «{name}»",
+        "folderIntro": "Esta colección es una carpeta que tu amigo compartió contigo en {app}. Tres pasos:",
+        "accept": {
+          "gdrive": "Abre el correo de Google Drive y abre la carpeta compartida.",
+          "dropbox": "Abre el correo de Dropbox y añade la carpeta compartida a tu Dropbox.",
+          "onedrive": "Abre el correo de OneDrive y abre la carpeta compartida.",
+          "icloud": "Abre la invitación de iCloud Drive que te envió tu amigo y acéptala.",
+          "other": "Asegúrate de que la carpeta de tu amigo ha llegado a este ordenador."
+        },
+        "sync": {
+          "gdrive": "En Google Drive, añádela a tu unidad: clic derecho en la carpeta ▸ Organizar ▸ Añadir acceso directo, y elige Mi unidad. Google Drive for desktop debe estar instalado en este ordenador.",
+          "dropbox": "Comprueba que la aplicación de Dropbox de este ordenador la ha sincronizado.",
+          "onedrive": "En OneDrive, elige «Agregar acceso directo a Mis archivos» en la carpeta, para que se sincronice con este ordenador.",
+          "icloud": "Aparece en iCloud Drive en este Mac, con el nombre que le dio tu amigo.",
+          "other": "Debería estar en una carpeta de este ordenador que se mantiene sincronizada con la de tu amigo."
+        },
+        "pick": "Elige esa carpeta. (También sirve elegir la carpeta que la contiene.)",
+        "chooseFolder": "Elegir la carpeta…",
+        "githubIntro": "Esta colección es el repositorio privado de GitHub {repo}. Inicia sesión con la cuenta de GitHub que invitó tu amigo y luego únete.",
+        "join": "Unirse a la colección",
+        "notInvited": "Has iniciado sesión como @{login}, pero esta colección aún no se ha compartido con esa cuenta. Pide a tu amigo que invite a @{login} y vuelve a pulsar Unirse.",
+        "folderIntroOther": "Esta colección es una carpeta que un amigo ha compartido contigo. Tres pasos:"
+      },
+      "joinedTitle": "«{name}» se ha añadido",
+      "joinedText": "Tiene su propia pestaña en Archivo ▸ Explorar proyectos. Guarda un escritorio en ella con Escritorio ▸ Guardar en una colección privada…",
+      "local": {
+        "title": "Añadir una carpeta de colección que ya está en este ordenador",
+        "intro": "Elige la carpeta de una colección: una que quitaste de esta lista, o una que se sincronizó aquí desde otro de tus ordenadores. ¿Qué servicio la mantiene sincronizada? (Decide lo que se les dice a tus amigos cuando la compartes.)"
+      }
+    },
+    "browse": {
+      "refresh": "Actualizar",
+      "openLatest": "Abrir la última",
+      "revisions": {
+        "one": "{count} versión",
+        "other": "{count} versiones"
+      },
+      "forked": {
+        "one": "{count} personas guardaron a partir de la misma versión, así que se conservan ambas.",
+        "other": "{count} personas guardaron a partir de la misma versión, así que se conservan todas. Abre aquella con la que quieras continuar."
+      },
+      "latest": "la última",
+      "otherVersion": "otra versión",
+      "someone": "alguien",
+      "search": "Buscar en esta colección",
+      "empty": "Esta colección aún está vacía. Guarda un escritorio en ella con Escritorio ▸ Guardar en una colección privada…",
+      "openVersion": "Abrir la versión del {when} de {who}"
+    },
+    "save": {
+      "intro": "Guarda este escritorio donde los amigos con quienes compartes la colección puedan abrirlo y continuar.",
+      "store": "Colección",
+      "saveAs": "Guardar como",
+      "asVersion": "Una nueva versión de «{title}»",
+      "asNew": "Un diseño nuevo",
+      "noteLabel": "¿Qué ha cambiado? (opcional)",
+      "notePlaceholder": "p. ej. cambié el reloj por un 555",
+      "private": "Solo pueden verlo las personas con quienes se comparte la colección.",
+      "running": "Detén el circuito para guardarlo.",
+      "save": "Guardar",
+      "saving": "Guardando…",
+      "behind": "{who} guardó una versión más reciente ({when}) después de la que abriste. Puedes abrir la suya y seguir a partir de ella, o guardar la tuya junto a ella; así se conservan las dos versiones.",
+      "openTheirs": "Abrir la suya",
+      "saveAlongside": "Guardar la mía al lado",
+      "savedTitle": "Guardado",
+      "saved": "Guardado en «{store}».",
+      "noStoreTitle": "Aún no hay ninguna colección privada",
+      "noStore": "Primero añade una colección privada, en Ajustes ▸ Galería ▸ Colecciones privadas.",
+      "linkLost": "No se pudo leer ahora el diseño del que viene este escritorio (sin conexión o aún sin sincronizar), así que se guardará como un diseño nuevo."
+    },
+    "linkCopied": "Enlace copiado.",
+    "linkHintFolderOther": "Envía este enlace a un amigo. También necesita la carpeta: asegúrate de que llegue a su ordenador y de que pueda guardar en ella.",
+    "actionFor": "{action}: {name}"
   }
 }

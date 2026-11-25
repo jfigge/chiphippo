@@ -234,9 +234,13 @@ class BookmarkStore {
    * store build, no bookmark on file, or a blob the OS refused). A refused blob
    * is DROPPED: it names a file that has moved or a signing identity that has
    * changed, and either way it will never work again.
+   * `keep`: a blob that resolves but cannot be READ right now is kept rather
+   * than dropped — a synced folder (Google Drive, OneDrive, a network share)
+   * can be briefly unmounted at launch, and dropping its bookmark then would
+   * lock the store out for good. (A private store's folder asks this.)
    * @returns {(() => void)|null} the stop function, to be called exactly once.
    */
-  _start(filePath) {
+  _start(filePath, { keep = false } = {}) {
     if (!this.enabled() || typeof filePath !== "string" || !filePath) {
       return null;
     }
@@ -265,7 +269,7 @@ class BookmarkStore {
     // real read proves a real grant.
     if (readable(key)) return stop;
     stop();
-    this._drop(key);
+    if (!keep) this._drop(key);
     return null;
   }
 
@@ -298,8 +302,8 @@ class BookmarkStore {
    * path inside the container: userData is always ours.
    * @returns {*} whatever `fn` returns.
    */
-  withAccess(filePath, fn) {
-    const stop = this._start(filePath);
+  withAccess(filePath, fn, opts = {}) {
+    const stop = this._start(filePath, opts);
     if (!stop) return fn();
     let result;
     try {

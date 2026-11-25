@@ -230,3 +230,21 @@ test("an object's menu: no rules, danger last behind exactly one", () => {
   assert.deepEqual(shape([{ label: "Properties…" }, rule, { label: "Put Away" }]), ["Properties…", "Put Away"]); // prettier-ignore
   assert.deepEqual(shape([{ label: "Delete", danger: true }]), ["Delete"]);
 });
+
+test("Share To… is ONE item, public and private alike; a desktopOnly action is left off the web build", () => {
+  const send = () => {};
+  const label = (key) => key;
+  const labels = (items) => items.map((i) => i.label).filter(Boolean);
+  const desktop = toElectronTemplate(DESKTOP_ACTIONS, { label, send });
+  const web = toElectronTemplate(DESKTOP_ACTIONS, { label, send, web: true });
+  assert.equal(labels(desktop).filter((l) => l === "menu.desktop.share").length, 1); // prettier-ignore
+  assert.ok(labels(web).includes("menu.desktop.share"));
+  assert.ok(!flat(DESKTOP_ACTIONS).some((a) => a.id === "desktop-save-store"));
+  const only = [{ id: "x", labelKey: "x", desktopOnly: true }];
+  assert.equal(toElectronTemplate(only, { label, send }).length, 1);
+  assert.deepEqual(toElectronTemplate(only, { label, send, web: true }), []);
+  // A flagged action still waits for its flag.
+  const flagged = [{ id: "x", labelKey: "x", feature: "demo" }];
+  assert.deepEqual(toElectronTemplate(flagged, { label, send }), []);
+  assert.equal(toElectronTemplate(flagged, { label, send, features: ["demo"] }).length, 1); // prettier-ignore
+});

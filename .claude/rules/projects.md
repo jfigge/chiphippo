@@ -394,7 +394,7 @@ Code: `app/store/project-store.js` + `project-images.js` + `project-migrate.js` 
   on the last tab. A tab's context menu IS the **Desktop menu** aimed at that tab
   (`model/menu-actions.js`, 2026-11-07 — it had been the board menu's shape, with its own
   "Properties…" label and order): New Desktop · Duplicate · rule · Import… · Export ▸ ·
-  rule · Share to Gallery… · rule · Desktop Properties… · rule · Delete Desktop. There is no per-tab dirty dot (a desktop cannot be saved on its own, so a
+  rule · Share To… · rule · Desktop Properties… · rule · Delete Desktop. There is no per-tab dirty dot (a desktop cannot be saved on its own, so a
   marker no action could clear would be a lie). **Desktop Properties…** opens the shared
   `PartPropertiesDialog` with the universal Name/Description pair alone (the description
   shows in the tab's tooltip); the PROJECT has the same dialog (File ▸ Project

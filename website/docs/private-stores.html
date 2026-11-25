@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#2F855A" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <title>Private Stores · Chip Hippo Guide</title>
+  <meta name="description" content="Private Stores — the Chip Hippo user guide." />
+  <link rel="canonical" href="https://chiphippo.com/docs/private-stores.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Chip Hippo" />
+  <meta property="og:title" content="Private Stores · Chip Hippo Guide" />
+  <meta property="og:description" content="Private Stores — the Chip Hippo user guide." />
+  <meta property="og:url" content="https://chiphippo.com/docs/private-stores.html" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Private Stores · Chip Hippo Guide" />
+  <meta name="twitter:description" content="Private Stores — the Chip Hippo user guide." />
+  <style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#1c1c1c;--mantle:#161616;--crust:#101010;--surface-0:#2a2a2a;--surface-1:#383838;--overlay-0:#686868;--text:#e8e8e8;--subtext:#b0b0b0;--accent:#3fb950;--green:#56d364}
+html{scroll-behavior:smooth}
+body{font-family:"Segoe UI",system-ui,-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);line-height:1.65}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code{font-family:"Cascadia Code","JetBrains Mono","Fira Code",monospace;font-size:.88em;background:var(--surface-0);padding:1px 6px;border-radius:4px;color:var(--text)}
+pre{background:var(--crust);border:1px solid var(--surface-0);border-radius:10px;padding:14px 16px;overflow:auto;margin:16px 0}
+pre code{background:none;padding:0}
+kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px solid var(--surface-1);border-bottom-width:2px;border-radius:5px;padding:1px 6px}
+.topbar{position:sticky;top:0;z-index:10;height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:var(--mantle);border-bottom:1px solid var(--surface-0)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;color:var(--accent);font-size:1.1rem}
+.brand:hover{text-decoration:none}
+.topbar .back{color:var(--subtext);font-size:.85rem}
+.layout{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:260px 1fr;gap:40px;padding:32px 24px 80px}
+.sidebar{position:sticky;top:90px;align-self:start;max-height:calc(100vh - 110px);overflow:auto}
+.sidebar-title{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--overlay-0);padding:0 12px 8px}
+.doc-nav-link{display:block;padding:7px 12px;border-radius:7px;color:var(--subtext);font-size:.9rem;margin-bottom:2px}
+.doc-nav-link:hover{background:var(--surface-0);color:var(--text);text-decoration:none}
+.doc-nav-link--active{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);font-weight:600}
+.content{min-width:0;max-width:760px}
+.content h1{font-size:2.1rem;font-weight:800;letter-spacing:-1px;margin:0 0 20px;line-height:1.2}
+.content h2{font-size:1.45rem;font-weight:700;margin:36px 0 12px;padding-top:12px;border-top:1px solid var(--surface-0)}
+.content h3{font-size:1.12rem;font-weight:700;margin:26px 0 10px}
+.content p,.content ul,.content ol,.content blockquote,.content table{margin:0 0 16px}
+.content ul,.content ol{padding-left:24px}
+.content li{margin:4px 0}
+.content img{max-width:100%;height:auto;border:1px solid var(--surface-0);border-radius:10px;margin:8px 0}
+.content blockquote{border-left:3px solid var(--accent);background:var(--mantle);padding:10px 16px;border-radius:0 8px 8px 0;color:var(--subtext)}
+.content blockquote p:last-child{margin:0}
+.content table{border-collapse:collapse;width:100%;font-size:.9rem;display:block;overflow:auto}
+.content th,.content td{border:1px solid var(--surface-0);padding:8px 12px;text-align:left}
+.content th{background:var(--mantle)}
+.content hr{border:none;border-top:1px solid var(--surface-0);margin:28px 0}
+@media(max-width:820px){.layout{grid-template-columns:1fr;gap:20px}.sidebar{position:static;max-height:none;border-bottom:1px solid var(--surface-0);padding-bottom:16px}}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><svg width="24" height="24" viewBox="0 0 512 512" role="img" aria-label="Chip Hippo"><rect x="0" y="0" width="512" height="512" rx="114" fill="#2F855A"/><circle cx="170" cy="146" r="40" fill="#FFFFFF"/><circle cx="342" cy="146" r="40" fill="#FFFFFF"/><rect x="144" y="140" width="224" height="190" rx="74" fill="#FFFFFF"/><rect x="118" y="260" width="276" height="150" rx="74" fill="#FFFFFF"/><circle cx="201" cy="198" r="17" fill="#1C1C1C"/><circle cx="311" cy="198" r="17" fill="#1C1C1C"/><rect x="186" y="320" width="140" height="52" rx="8" fill="#23272B"/><circle cx="186" cy="346" r="11" fill="#FFFFFF"/></svg><span>Chip Hippo</span></a>
+    <a class="back" href="/">← Back to site</a>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="User guide">
+      <div class="sidebar-title">User Guide</div>
+        <a class="doc-nav-link" href="index.html">Overview</a>
+        <a class="doc-nav-link" href="getting-started.html">Getting Started</a>
+        <a class="doc-nav-link" href="the-desk.html">The Desk &amp; Breadboards</a>
+        <a class="doc-nav-link" href="veroboard.html">Veroboard</a>
+        <a class="doc-nav-link" href="components.html">Chips &amp; Components</a>
+        <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
+        <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
+        <a class="doc-nav-link" href="chip-library.html">The Chip Library</a>
+        <a class="doc-nav-link" href="custom-chips.html">Custom Chips</a>
+        <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
+        <a class="doc-nav-link" href="spice-lite.html">Spice Lite</a>
+        <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
+        <a class="doc-nav-link" href="multimeter.html">The Multimeter</a>
+        <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
+        <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
+        <a class="doc-nav-link" href="build-guide.html">Build Guide &amp; BOM</a>
+        <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
+        <a class="doc-nav-link" href="3d-view.html">3D View</a>
+        <a class="doc-nav-link" href="ai-builder.html">AI Circuit Builder</a>
+        <a class="doc-nav-link" href="arduino.html">Arduino Integration</a>
+        <a class="doc-nav-link" href="serial-protocol.html">Serial Protocol</a>
+        <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
+        <a class="doc-nav-link" href="projects-and-desktops.html">Projects &amp; Desktops</a>
+        <a class="doc-nav-link" href="exporting.html">Exporting to Other Tools</a>
+        <a class="doc-nav-link" href="gallery.html">The Gallery</a>
+        <a class="doc-nav-link doc-nav-link--active" href="private-stores.html">Private Stores</a>
+        <a class="doc-nav-link" href="web.html">Chip Hippo in the Browser</a>
+        <a class="doc-nav-link" href="settings.html">Settings</a>
+        <a class="doc-nav-link" href="keyboard-shortcuts.html">Keyboard Shortcuts</a>
+    </nav>
+    <main class="content">
+<h1>Private Stores</h1>
+<p>A <strong>private store</strong> is a place to keep designs that only you and the friends
+you choose can see. You can all open them, change them and save new versions,
+so a store is a way to work on circuits together. It is not like the public
+<a href="gallery.html">gallery</a>: nothing is reviewed or published.</p>
+<p>A store lives on a service you already use. Chip Hippo runs no server for it,
+and none of your designs ever comes to us. That service&#39;s own sharing decides
+who can get in, and there are two kinds:</p>
+<ul>
+<li><strong>A folder you sync</strong> — a folder that Google Drive, Dropbox, OneDrive,
+iCloud Drive, or any other service keeps in step across computers. You
+share the folder with your friends the way you share any folder there.
+There&#39;s no sign-in, and Chip Hippo reads and writes the folder like any
+other folder on your disk.</li>
+<li><strong>A private GitHub repository</strong> — a free private repository on your GitHub
+account. Chip Hippo can make one for you, or use a folder in a private
+repository you already have. Friends get in by being invited by their
+GitHub username.</li>
+</ul>
+<p>You can add as many stores as you like, such as one for a club, one for a
+class and one shared with a single friend.</p>
+<p>Private stores are in the desktop app only. Chip Hippo in the browser doesn&#39;t
+have them.</p>
+<h2 id="adding-a-store">Adding a store</h2>
+<p>Open <strong>Settings ▸ Gallery</strong>, choose the <strong>Private</strong> tab and press
+<strong>Add Store…</strong>. Chip Hippo asks where the designs should live, and walks you
+through the rest one short step at a time:</p>
+<ul>
+<li><strong>A folder you sync</strong> makes a new store in a folder.</li>
+<li><strong>GitHub</strong> makes a new store on GitHub.</li>
+<li><strong>I have a link from a friend</strong> joins a store someone has shared with you
+(see <a href="#joining-a-friends-store">Joining a friend&#39;s store</a>).</li>
+<li><strong>A store folder already on this computer</strong> adds back a store you removed
+from the list, or one that synced here from another of your computers. It
+needs no link.</li>
+</ul>
+<h3 id="a-folder-you-sync">A folder you sync</h3>
+<ol>
+<li>Choose <strong>which service</strong> keeps the folder in step: Google Drive, Dropbox,
+OneDrive, iCloud Drive, or <strong>Another synced folder</strong> (Syncthing, a shared
+network drive, …). If that service&#39;s app isn&#39;t on this computer yet, the
+step says how to get it and links to its download page.</li>
+<li>Give the store a <strong>name</strong>, such as <code>Bench club</code>.</li>
+<li>Press <strong>Choose Where…</strong> and pick the folder your service keeps in step,
+such as &quot;My Drive&quot; for Google Drive, your Dropbox folder, or iCloud Drive.
+A folder inside it works too.</li>
+</ol>
+<p>Chip Hippo makes a new folder there, named after the store, and says where it
+is. To let your friends in:</p>
+<ol>
+<li><strong>Share that new folder with them</strong> in your service, and let them edit it.
+The step says how for the service you chose (for example, in Google Drive,
+right-click the folder ▸ Share and give them Editor access).</li>
+<li><strong>Send them the store&#39;s link</strong>, shown on the same step with a button to
+copy it. When they open it, Chip Hippo walks them through adding the store.</li>
+</ol>
+<h3 id="github">GitHub</h3>
+<ol>
+<li><strong>Sign in to GitHub.</strong> Press <strong>Sign In to GitHub</strong>, and Chip Hippo shows a
+short code. Press <strong>Copy Code and Open GitHub</strong>, paste the code on GitHub&#39;s
+page, and approve Chip Hippo, then come back. You never type your GitHub
+password into Chip Hippo. If you don&#39;t have an account, <strong>Make one free</strong>
+opens GitHub&#39;s sign-up page.</li>
+<li><strong>Choose where the store goes:</strong><ul>
+<li><strong>A new private repository</strong> — Chip Hippo makes one on your account,
+named after the store.</li>
+<li><strong>A folder in one of my repositories</strong> — pick one of your repositories
+and type a folder name (<code>chiphippo</code> to start with). The store&#39;s files
+go in that folder, apart from everything else the repository holds. If
+the folder already holds a Chip Hippo store, that store is added rather
+than made again. Only <strong>private</strong> repositories you can write to are
+listed, because a store in a public one would publish every design.</li>
+</ul>
+</li>
+<li>Give the store a <strong>name</strong> and press <strong>Make the Store</strong>.</li>
+</ol>
+<p>Then <strong>invite your friends</strong> by their GitHub username, and send them the
+store&#39;s link. Invited people show as <em>invited — waiting for them</em> until they
+join.</p>
+<p>To reach your private repositories, Chip Hippo asks GitHub for access to them
+when you sign in. That is the only kind of access GitHub offers that can
+reach a private repository. Chip Hippo reads and writes designs only in the
+store&#39;s own repository or folder. Besides that, it asks GitHub only for your
+username, your pending invitations (to accept the one for a store you join),
+and, when you pick &quot;A folder in one of my repositories&quot;, the names of your
+private repositories.</p>
+<h2 id="sharing-a-store">Sharing a store</h2>
+<p>A store&#39;s link is all a friend needs from Chip Hippo. It names the store and
+says where it lives, but it carries no password and nothing private. Someone
+who has the link but hasn&#39;t been given access sees nothing of the designs.</p>
+<ul>
+<li>In <strong>Settings ▸ Gallery ▸ Private</strong>, press <strong>Copy link</strong> on the store. The
+link is copied, and Chip Hippo shows what else your friend needs: the folder
+shared with them, or a GitHub invitation.</li>
+<li>For a GitHub store, <strong>Invite</strong> adds a friend by their GitHub username, and
+<strong>Manage who has access on GitHub</strong> opens the repository&#39;s access page,
+where you can also take someone&#39;s access away.</li>
+<li>For a folder store, you choose who has access in your service, and you take
+it away there too.</li>
+</ul>
+<p>The link looks like <code>https://chiphippo.com/store/#…</code>. Opened in a browser,
+that page offers to open the store in Chip Hippo, or to download Chip Hippo
+first.</p>
+<h2 id="joining-a-friends-store">Joining a friend&#39;s store</h2>
+<p>Open the link your friend sent you. Chip Hippo opens and goes straight to the
+store&#39;s steps. You can also paste the link yourself in <strong>Settings ▸ Gallery
+▸ Private ▸ Add Store… ▸ I have a link from a friend</strong>.</p>
+<p><strong>A folder store</strong> takes three steps, worded for your friend&#39;s service:</p>
+<ol>
+<li><strong>Accept the share</strong>, for example by opening the email from Google Drive or
+Dropbox.</li>
+<li><strong>Get the folder onto this computer.</strong> In Google Drive, add a shortcut to it
+in My Drive, and make sure Google Drive for desktop is installed. In
+OneDrive, choose &quot;Add shortcut to My files&quot;. In Dropbox, check it has synced.</li>
+<li>Press <strong>Choose the Folder…</strong> and pick it. Picking the folder just above it
+works too. Chip Hippo checks that it&#39;s the store the link names.</li>
+</ol>
+<p><strong>A GitHub store</strong>: sign in with the GitHub account your friend invited and
+press <strong>Join the Store</strong>. Chip Hippo accepts the invitation for you, so you
+never need to find it on GitHub. If your friend hasn&#39;t invited that account
+yet, Chip Hippo says which account you&#39;re signed in as, so you can tell them.
+Press <strong>Join the Store</strong> again once they have invited you.</p>
+<h2 id="saving-a-design-to-a-store">Saving a design to a store</h2>
+<p>Choose <strong>Desktop ▸ Share To…</strong>, or right-click a desktop&#39;s tab and choose it
+there, then set the switch at the card&#39;s top to <strong>Private</strong>, which turns on
+the <strong>Store</strong> picker beside it (<strong>Public</strong> is the
+<a href="gallery.html#sharing-a-design">gallery</a>; the fields are the same, so flipping
+it keeps what you typed). A desktop you opened from a store opens
+on <strong>Private</strong> by itself. Stop the circuit first, because saving is
+greyed out while it runs. The card asks:</p>
+<ul>
+<li><strong>Store</strong> — which of your stores to save to.</li>
+<li><strong>Save as</strong> — this appears only for a desktop you opened from a store:<ul>
+<li><strong>A new version of &quot;…&quot;</strong> (the default) adds this desktop as the design&#39;s
+next version, with an optional note on <strong>What changed?</strong>. The design&#39;s
+own title, description and tags are shown greyed, since a version keeps
+them.</li>
+<li><strong>A new design</strong> saves it as a separate design.</li>
+</ul>
+</li>
+<li><strong>Title</strong>, and optionally a <strong>Description</strong> and <strong>Tags</strong>, the same as for
+the gallery.</li>
+<li><strong>Your name</strong> — shown with the version, so your friends know who saved it.
+Chip Hippo remembers it for next time.</li>
+</ul>
+<p>Press <strong>Save</strong>. The design and the custom chips it uses are written into the
+store, and from then on the desktop remembers where it came from. A picture of
+the board goes with it when you save the desktop that&#39;s on screen. A desktop
+saved from its tab&#39;s menu while another one is showing is saved without a
+picture. If the store can&#39;t be read just then (you&#39;re offline, or it
+hasn&#39;t finished syncing), the card says it will save a new design instead of
+a version.</p>
+<p>Nothing in a store is ever changed or deleted. Every save adds a new version
+beside the ones already there, so an older version is always still there to go
+back to.</p>
+<h3 id="when-someone-saved-first">When someone saved first</h3>
+<p>If a friend saved a newer version after the one you opened, Chip Hippo says
+who and when, and gives you two choices:</p>
+<ul>
+<li><strong>Open Theirs</strong> opens their version, so you can carry on from it.</li>
+<li><strong>Save Mine Alongside</strong> keeps your version as well. Both are kept, and the
+store shows that the design has two latest versions.</li>
+</ul>
+<p>Chip Hippo never saves over someone else&#39;s work, and never makes a second
+version without asking.</p>
+<h2 id="browsing-a-store">Browsing a store</h2>
+<p>Each store has its own tab in <strong>File ▸ Browse Projects…</strong> (<code>Shift+Cmd/Ctrl+B</code>),
+after Recent Projects and the Gallery, in the order the stores were added. A
+row with more tabs than fit scrolls sideways. A store&#39;s tab looks like the
+gallery&#39;s: a card for each design, with its picture, who made it, and a search
+box.</p>
+<ul>
+<li><strong>Open Latest</strong> puts the design&#39;s newest version on your desk as a new
+desktop, as the gallery does. Open it again and Chip Hippo switches to the
+desktop it is already on.</li>
+<li>Choose a card to see its details, which include <strong>every version</strong>: when it
+was saved, who saved it, what changed, and an <strong>Open</strong> button for each. The
+newest is marked <em>latest</em>. When two people saved from the same version, the
+details say so, and the other version is marked <em>another version</em>.</li>
+<li><strong>Refresh</strong> reads the store again. Chip Hippo doesn&#39;t watch a store on its
+own, so press it to see what your friends have saved since. A folder store
+shows a friend&#39;s save only once your service has synced it to this computer.</li>
+</ul>
+<p>A store&#39;s tab can also be opened from Settings: <strong>Browse</strong> on the store&#39;s
+line.</p>
+<h2 id="managing-your-stores">Managing your stores</h2>
+<p><strong>Settings ▸ Gallery ▸ Private</strong> lists your stores, each with where it lives
+and these buttons:</p>
+<ul>
+<li><strong>Copy link</strong> — copies the store&#39;s link (see <a href="#sharing-a-store">Sharing a store</a>).</li>
+<li><strong>Invite</strong> — for a GitHub store, invites a friend by their GitHub username.</li>
+<li><strong>Browse</strong> — opens the store&#39;s tab in Browse Projects.</li>
+<li><strong>Show folder</strong> or <strong>Open on GitHub</strong> — shows the store&#39;s folder in Finder
+or Explorer, or opens its repository on GitHub.</li>
+<li><strong>Remove</strong> — takes the store off this computer&#39;s list, after asking first.
+<strong>Nothing is deleted</strong>: the store and its designs stay where they are, for
+you and everyone it is shared with, and you can add it again from its link.</li>
+</ul>
+<p>When you&#39;re signed in to GitHub, <strong>Sign out</strong> is shown below the list. It
+removes Chip Hippo&#39;s GitHub sign-in from this computer. To withdraw Chip Hippo&#39;s
+access on GitHub&#39;s side as well, open GitHub&#39;s <strong>Settings ▸ Applications ▸
+Authorized OAuth Apps</strong> and revoke it there.</p>
+<h2 id="what-a-store-holds">What a store holds</h2>
+<p>A store&#39;s folder (or repository) holds a <code>chiphippo-store.json</code> file that
+names the store, and an <code>entries</code> folder with one folder per design. Each
+design&#39;s folder holds every version: its <code>.desktop.chiphippo</code> file, its
+picture, and a small file saying who saved it and what it was based on.</p>
+<p><strong>Leave the folder&#39;s contents alone.</strong> Chip Hippo only ever adds files, so
+there&#39;s never anything to tidy, and a renamed or moved file is a version
+Chip Hippo can no longer find. You can copy a version&#39;s <code>.desktop.chiphippo</code>
+file out of the folder and double-click it to open it like any other desktop.
+Files your service adds (such as <code>.DS_Store</code> or a &quot;conflicted copy&quot;) are
+ignored.</p>
+<h2 id="if-something-goes-wrong">If something goes wrong</h2>
+<p>Chip Hippo says what happened and, where it can, what to do. The messages you
+are most likely to see:</p>
+<ul>
+<li><strong>This store has not been shared with your GitHub account yet</strong> — ask your
+friend to invite the account the guide names, then press <strong>Join the Store</strong>
+again.</li>
+<li><strong>That folder holds a different store from the one the link is for</strong> — choose
+the folder your friend shared with you.</li>
+<li><strong>That folder does not hold this store</strong> — if it was only just shared with
+you, your service may still be syncing it. Wait a minute and try again.</li>
+<li><strong>That store could not be found</strong> — its folder has moved, or it hasn&#39;t
+finished syncing to this computer. Add it again with <strong>A store folder
+already on this computer</strong>.</li>
+<li><strong>This store&#39;s repository is public</strong> — the repository was made public after
+the store was made. Chip Hippo won&#39;t join it or save to it, because anything
+saved there could be seen by anyone. Ask its owner to make it private again.</li>
+<li><strong>That repository is public</strong> — shown when you pick a repository for a new
+store. Choose a private one.</li>
+<li><strong>Your GitHub account can only read that repository</strong> — choose a repository
+you can write to, or ask its owner for write access.</li>
+<li><strong>GitHub asked Chip Hippo to slow down</strong> — GitHub limits how often an app may
+ask. Wait a few minutes and try again.</li>
+<li><strong>Chip Hippo is not allowed to write in that folder</strong> — check you still have
+access to it in your service.</li>
+<li><strong>This store was made by a newer Chip Hippo</strong> — you can still open its
+designs, but update Chip Hippo before you save to it.</li>
+</ul>
+<h2 id="privacy">Privacy</h2>
+<p>A folder store involves no network connection from Chip Hippo at all: it reads
+and writes files on your disk, and your service moves them. A GitHub store
+talks only to GitHub, from your computer, using your own GitHub account.
+Neither kind sends anything to chiphippo.com or to us. Your GitHub sign-in is
+kept on this computer, encrypted by your operating system&#39;s keychain, and is
+sent only to GitHub. The <a href="https://chiphippo.com/privacy.html">privacy statement</a>
+has the details.</p>
+
+    </main>
+  </div>
+</body>
+</html>

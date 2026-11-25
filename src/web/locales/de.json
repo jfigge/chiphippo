@@ -56,7 +56,7 @@
       "exportDigital": "Digital-Schaltung…",
       "properties": "Arbeitsblatteigenschaften…",
       "delete": "Arbeitsblatt löschen",
-      "share": "In der Galerie teilen…"
+      "share": "Teilen…"
     },
     "edit": {
       "title": "Bearbeiten",
@@ -120,6 +120,14 @@
     },
     "exportDigital": {
       "title": "Nach Digital exportieren"
+    },
+    "storeCreate": {
+      "title": "Wohin soll der Ordner der Sammlung?",
+      "button": "Sammlung hier anlegen"
+    },
+    "storeJoin": {
+      "title": "Den geteilten Ordner wählen",
+      "button": "Diesen Ordner verwenden"
     }
   },
   "toolbar": {
@@ -393,7 +401,7 @@
     },
     "gallery": {
       "access": "Zugriff auf die Galerie",
-      "accessHint": "Ob Chip Hippo die Galerie unter chiphippo.com/gallery lesen darf: die Liste der Entwürfe, ihre Bilder und einen Entwurf, wenn Sie ihn öffnen. Von Ihnen wird nichts gesendet. Wird beim ersten Durchsuchen der Galerie gefragt.",
+      "accessHint": "Ob Chip Hippo die Galerie unter chiphippo.com/gallery lesen darf: die Liste der Entwürfe, ihre Bilder und einen Entwurf, wenn Sie ihn öffnen. Von Ihnen wird nichts gesendet. Datei ▸ Projekte durchsuchen zeigt den Reiter Galerie nur, solange hier Ja steht.",
       "share": "Zustimmung zum Teilen",
       "shareHint": "Ob das Teilen eines Entwurfs in der Galerie zeigt, was veröffentlicht wird, und vorher fragt (Fragen), es in einer Zeile zeigt (Ja) oder ausgeschaltet ist (Nein).",
       "shares": "Ihre Freigaben",
@@ -414,7 +422,12 @@
       "remove": "„{title}“ aus dieser Liste entfernen",
       "yes": "Ja",
       "no": "Nein",
-      "ask": "Fragen"
+      "ask": "Fragen",
+      "tab": {
+        "public": "Öffentlich",
+        "private": "Privat"
+      },
+      "tabsLabel": "Galerie"
     }
   },
   "palette": {
@@ -2991,6 +3004,10 @@
         "refused": "Teilen ist hier nicht verfügbar.",
         "unavailable": "Die Galerie war nicht erreichbar. Prüfen Sie die Verbindung und versuchen Sie es erneut."
       }
+    },
+    "shareTo": {
+      "title": "Teilen",
+      "where": "Teilen in"
     }
   },
   "browse": {
@@ -3010,11 +3027,242 @@
         "other": "{count} Desktops"
       },
       "remove": "{name} aus den zuletzt geöffneten Projekten entfernen"
-    },
-    "access": {
-      "title": "Galeriezugriff ist aus",
-      "message": "Die Galerie ist eine Sammlung von Schaltungen auf chiphippo.com. Chip Hippo fragt, bevor es dort etwas liest.",
-      "allow": "Erlauben…"
     }
+  },
+  "stores": {
+    "title": "Private Sammlungen",
+    "hint": "Bewahren Sie Entwürfe auf, die nur Sie und die Freunde Ihrer Wahl sehen können, und arbeiten Sie gemeinsam daran. Eine Sammlung liegt in einem Ordner, den Sie synchronisieren (Google Drive, Dropbox, OneDrive, iCloud Drive), oder in einem privaten GitHub-Repository — Chip Hippo betreibt dafür keinen Server.",
+    "add": "Sammlung hinzufügen…",
+    "empty": "Noch keine privaten Sammlungen.",
+    "copyLink": "Link kopieren",
+    "copied": "Kopiert",
+    "linkLabel": "Der Link der Sammlung",
+    "linkHintFolder": "Schicken Sie diesen Link einem Freund. Er braucht außerdem den Ordner selbst: Teilen Sie ihn zuerst in {app} mit ihm.",
+    "linkHintGitHub": "Schicken Sie diesen Link einem Freund. Laden Sie zuerst sein GitHub-Konto ein, damit die Sammlung ihn hereinlässt.",
+    "invite": "Einladen",
+    "peopleOnGitHub": "Auf GitHub verwalten, wer Zugriff hat",
+    "browseStore": "Durchsuchen",
+    "showFolder": "Ordner zeigen",
+    "showRepo": "Auf GitHub öffnen",
+    "remove": "Entfernen",
+    "removeAsk": "„{name}“ von diesem Computer entfernen? Es wird nichts gelöscht: Die Sammlung und ihre Entwürfe bleiben, wo sie sind, für Sie und alle, mit denen sie geteilt ist, und Sie können sie über ihren Link wieder hinzufügen.",
+    "removeConfirm": "Von diesem Computer entfernen",
+    "signOut": "Abmelden",
+    "back": "Zurück",
+    "done": "Fertig",
+    "whereFolder": "{app} · {path}",
+    "whereGitHub": "GitHub · {repo}",
+    "repoDescription": "Chip-Hippo-Entwürfe, gemeinsam genutzt",
+    "error": {
+      "missing": "Diese Sammlung wurde nicht gefunden. Ihr Ordner wurde vielleicht verschoben, oder er ist noch nicht vollständig auf diesen Computer synchronisiert.",
+      "noAccess": "Diese Sammlung ist nicht mit Ihnen geteilt (oder sie existiert nicht mehr).",
+      "signedOut": "Melden Sie sich erneut bei GitHub an, um diese Sammlung zu erreichen.",
+      "rateLimited": "GitHub hat Chip Hippo gebeten, langsamer zu machen. Warten Sie ein paar Minuten und versuchen Sie es erneut.",
+      "wrongStore": "Dieser Ordner enthält eine andere Sammlung als die, zu der der Link gehört.",
+      "ambiguous": "Dieser Ordner enthält mehr als eine Sammlung. Wählen Sie den Ordner der Sammlung selbst.",
+      "notStore": "In diesem Repository gibt es keine Chip-Hippo-Sammlung.",
+      "behind": "Jemand hat zuerst eine neuere Version gespeichert.",
+      "newer": "Diese Sammlung wurde mit einer neueren Version von Chip Hippo angelegt. Aktualisieren Sie Chip Hippo, um darin zu speichern.",
+      "full": "Auf diesem Computer sind bereits so viele Sammlungen, wie er aufnehmen kann. Entfernen Sie zuerst eine.",
+      "denied": "Chip Hippo darf in diesem Ordner nicht schreiben.",
+      "tooBig": "Dieser Entwurf ist zu groß für eine Sammlung.",
+      "romTooBig": "Die ROM-Inhalte dieses Entwurfs sind zu groß für eine Sammlung.",
+      "invalid": "So kann das nicht gespeichert werden. Prüfen Sie den Titel und Ihren Namen.",
+      "noUser": "Bei GitHub gibt es kein Konto mit diesem Namen.",
+      "nameTaken": "Ihr GitHub-Konto hat bereits Repositorys mit diesem Namen. Versuchen Sie einen anderen Namen.",
+      "notPrivate": "GitHub hat das Repository öffentlich angelegt, deshalb hat Chip Hippo es nicht verwendet. Prüfen Sie die Einstellungen Ihres GitHub-Kontos.",
+      "notConfigured": "GitHub-Sammlungen sind in dieser Version von Chip Hippo noch nicht verfügbar.",
+      "noKeychain": "Dieser Computer hat keinen sicheren Ort für eine GitHub-Anmeldung, deshalb kann Chip Hippo nicht angemeldet bleiben.",
+      "notInvited": "Diese Sammlung wurde noch nicht mit Ihrem GitHub-Konto geteilt.",
+      "notSynced": "Dieser Ordner enthält diese Sammlung nicht. Wenn sie gerade erst mit Ihnen geteilt wurde, wird sie vielleicht noch synchronisiert; warten Sie eine Minute und versuchen Sie es erneut.",
+      "signInDenied": "Die GitHub-Anmeldung wurde nicht abgeschlossen. Versuchen Sie es erneut.",
+      "cancelled": "Die Anmeldung wurde abgebrochen.",
+      "unavailable": "Das hat nicht geklappt. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
+      "badFolder": "Geben Sie einen Ordnernamen für die Sammlung ein, etwa chiphippo. Verwenden Sie Buchstaben, Ziffern, Punkte, Binde- und Unterstriche, mit / zwischen Ordnern.",
+      "badLink": "Das ist kein vollständiger Chip-Hippo-Link zu einer Sammlung. Kopieren Sie den ganzen Link aus der Nachricht und versuchen Sie es erneut.",
+      "badLogin": "Das ist kein GitHub-Benutzername. Benutzernamen bestehen aus Buchstaben, Ziffern und Bindestrichen.",
+      "pickPublic": "Dieses Repository ist öffentlich: Eine Sammlung darin würde jeden Entwurf veröffentlichen. Wählen Sie ein privates.",
+      "storePublic": "Das Repository dieser Sammlung ist öffentlich, also könnte jeder sehen, was dort gespeichert wird. Chip Hippo nutzt es erst, wenn es privat ist – bitten Sie den Besitzer, es privat zu machen.",
+      "noPush": "Ihr GitHub-Konto darf dieses Repository nur lesen, darum können dort keine Entwürfe gespeichert werden.",
+      "moved": "Das Repository dieser Sammlung wurde auf GitHub umbenannt oder verschoben. Bitten Sie den Besitzer um einen neuen Link.",
+      "tooLarge": "Dieses Repository ist zu groß, als dass GitHub es auf einmal auflisten könnte. Legen Sie die Sammlung in einen eigenen Ordner.",
+      "alreadyAdded": "Dieser Computer hat diese Sammlung bereits, an einem anderen Ort. Um sie von hier hinzuzufügen, entfernen Sie zuerst die in der Liste."
+    },
+    "setup": {
+      "linkCardTitle": "Private Sammlung hinzufügen",
+      "startTitle": "Private Sammlung hinzufügen",
+      "startIntro": "Eine private Sammlung bewahrt Entwürfe auf, die nur Sie und die Freunde sehen können, mit denen Sie sie teilen. Alle können sie öffnen, ändern und neue Versionen speichern. Sie liegt bei einem Dienst, den Sie bereits nutzen — wählen Sie einen:",
+      "choice": {
+        "folder": {
+          "title": "Ein Ordner, den Sie synchronisieren",
+          "text": "Google Drive, Dropbox, OneDrive, iCloud Drive oder ein beliebiger geteilter Ordner. Keine Anmeldung nötig."
+        },
+        "github": {
+          "title": "GitHub",
+          "text": "Ein kostenloses privates Repository – ein neues, das Chip Hippo für Sie anlegt, oder eines, das Sie schon haben. Laden Sie Freunde über ihren GitHub-Namen ein."
+        },
+        "link": {
+          "title": "Ich habe einen Link von einem Freund",
+          "text": "Treten Sie einer Sammlung bei, die jemand mit Ihnen geteilt hat."
+        },
+        "local": {
+          "title": "Ein Sammlungsordner, der schon auf diesem Computer liegt",
+          "text": "Einen vorhandenen lokalen Speicherort einer Sammlung wiederherstellen."
+        }
+      },
+      "nameLabel": "Name der Sammlung",
+      "namePlaceholder": "z. B. Bastelclub",
+      "browse": "Entwürfe der Sammlung zeigen",
+      "provider": {
+        "gdrive": "Google Drive",
+        "dropbox": "Dropbox",
+        "onedrive": "OneDrive",
+        "icloud": "iCloud Drive",
+        "other": "Ein anderer synchronisierter Ordner"
+      },
+      "folder": {
+        "title": "Sammlung in einem synchronisierten Ordner anlegen",
+        "intro": "Chip Hippo legt einen Ordner für die Sammlung in dem Ordner an, den Ihr Cloud-Dienst auf allen Ihren Computern abgleicht. Ihr Dienst teilt ihn mit Ihren Freunden; Chip Hippo liest und schreibt nur die Entwürfe darin.",
+        "provider": "Welcher Dienst?",
+        "noApp": "Die App ist noch nicht auf diesem Computer?",
+        "getApp": "{app} herunterladen",
+        "where": {
+          "gdrive": "Installieren Sie Google Drive for desktop und melden Sie sich an. Wenn Chip Hippo dann fragt, wohin, wählen Sie „Meine Ablage“ (oder einen Ordner darin).",
+          "dropbox": "Installieren Sie die Dropbox-App und melden Sie sich an. Wenn Chip Hippo dann fragt, wohin, wählen Sie Ihren Dropbox-Ordner (oder einen Ordner darin).",
+          "onedrive": "Installieren Sie OneDrive und melden Sie sich an. Wenn Chip Hippo dann fragt, wohin, wählen Sie Ihren OneDrive-Ordner (oder einen Ordner darin).",
+          "icloud": "Schalten Sie iCloud Drive auf diesem Mac ein. Wenn Chip Hippo dann fragt, wohin, wählen Sie iCloud Drive (oder einen Ordner darin). Ihre Freunde brauchen ebenfalls iCloud Drive.",
+          "other": "Jeder Ordner, der mit den Computern Ihrer Freunde abgeglichen wird, funktioniert — Syncthing, ein geteiltes Netzlaufwerk oder ein anderer Synchronisierungsdienst."
+        },
+        "choose": "Ort wählen…",
+        "madeTitle": "„{name}“ ist bereit",
+        "madeWhere": "Der Ordner liegt unter {path}.",
+        "share": {
+          "gdrive": "Teilen Sie den neuen Ordner in Google Drive mit Ihren Freunden (Rechtsklick darauf ▸ Teilen) und geben Sie ihnen die Rolle Bearbeiter.",
+          "dropbox": "Teilen Sie den neuen Ordner in Dropbox mit Ihren Freunden und erlauben Sie ihnen das Bearbeiten.",
+          "onedrive": "Teilen Sie den neuen Ordner in OneDrive mit Ihren Freunden und erlauben Sie ihnen das Bearbeiten.",
+          "icloud": "Teilen Sie den neuen Ordner im Finder mit Ihren Freunden (Rechtsklick darauf ▸ Teilen) und erlauben Sie ihnen, Änderungen vorzunehmen.",
+          "other": "Sorgen Sie dafür, dass der neue Ordner auf die Computer Ihrer Freunde gelangt und dass sie darin schreiben können."
+        },
+        "howToShare": "So teilen Sie einen Ordner",
+        "sendLink": "Schicken Sie Ihren Freunden diesen Link. Wenn sie ihn öffnen, führt Chip Hippo sie Schritt für Schritt durch das Hinzufügen der Sammlung.",
+        "friendSees": "Der Link sagt, welche Sammlung es ist und wo sie liegt — kein Passwort und nichts Privates. Nur Personen, mit denen Sie den Ordner geteilt haben, können die Entwürfe öffnen."
+      },
+      "github": {
+        "title": "Sammlung auf GitHub anlegen",
+        "intro": "Chip Hippo legt in Ihrem GitHub-Konto ein privates Repository für die Entwürfe an und lädt die Freunde ein, die Sie nennen. GitHub ist kostenlos; Ihre Freunde brauchen ebenfalls ein kostenloses Konto.",
+        "signInWhy": "Melden Sie sich zuerst bei GitHub an. Sie geben dazu einen kurzen Code auf der Seite von GitHub selbst ein — Chip Hippo sieht Ihr Passwort nie.",
+        "noAccount": "Kein GitHub-Konto?",
+        "signUp": "Kostenlos eines anlegen",
+        "signIn": "Bei GitHub anmelden",
+        "typeCode": "Geben Sie diesen Code auf der Seite von GitHub ein und genehmigen Sie dann Chip Hippo:",
+        "copyAndOpen": "Code kopieren und GitHub öffnen",
+        "waiting": "Warten auf GitHub… Kommen Sie hierher zurück, wenn Sie die Genehmigung erteilt haben.",
+        "signedIn": "Bei GitHub angemeldet.",
+        "signedInAs": "Bei GitHub angemeldet als @{login}.",
+        "private": "Das Repository ist privat: Nur Sie und die Personen, die Sie einladen, können es sehen. Chip Hippo bittet GitHub um Zugriff auf Ihre privaten Repositorys — nur so kann es dieses erreichen.",
+        "make": "Sammlung anlegen",
+        "making": "Wird angelegt…",
+        "madeWhere": "Sie liegt im privaten Repository {repo}.",
+        "sendLink": "Schicken Sie ihnen dann diesen Link. Wenn sie ihn öffnen, meldet Chip Hippo sie an und nimmt die Einladung für sie an.",
+        "friendSees": "Der Link sagt, welche Sammlung es ist — kein Passwort und nichts Privates. Nur die Konten, die Sie eingeladen haben, können die Entwürfe öffnen.",
+        "where": "Wo soll die Sammlung liegen?",
+        "whereNew": "In einem neuen privaten Repository",
+        "whereExisting": "In einem Ordner eines meiner Repositorys",
+        "repo": "Repository",
+        "repoLoading": "Ihre Repositorys werden geladen…",
+        "repoNone": "Es wurde kein privates Repository gefunden, in das Sie schreiben dürfen. Öffentliche Repositorys werden nicht angeboten: Eine Sammlung darin würde jeden Entwurf veröffentlichen.",
+        "privateOnly": "Nur private Repositorys, in die Sie schreiben dürfen, werden aufgeführt: Eine Sammlung in einem öffentlichen würde jeden Entwurf veröffentlichen.",
+        "folder": "Ordner im Repository",
+        "folderHint": "Die Dateien der Sammlung kommen in diesen Ordner, getrennt von allem anderen im Repository. Enthält der Ordner schon eine Chip-Hippo-Sammlung, wird stattdessen diese hinzugefügt.",
+        "repoRetry": "Erneut versuchen"
+      },
+      "invite": {
+        "intro": "Laden Sie Freunde über ihren GitHub-Benutzernamen ein:",
+        "label": "GitHub-Benutzername eines Freundes",
+        "placeholder": "benutzername",
+        "invite": "Einladen",
+        "pending": "eingeladen — wartet auf Annahme"
+      },
+      "link": {
+        "title": "Der Sammlung eines Freundes beitreten",
+        "intro": "Fügen Sie den Link ein, den Ihr Freund Ihnen geschickt hat:",
+        "label": "Der Link der Sammlung",
+        "placeholder": "https://chiphippo.com/store/#…",
+        "next": "Weiter",
+        "bad": "Das ist kein Link zu einer Chip-Hippo-Sammlung. Kopieren Sie den ganzen Link aus der Nachricht Ihres Freundes und versuchen Sie es erneut."
+      },
+      "join": {
+        "title": "„{name}“ beitreten",
+        "folderIntro": "Diese Sammlung ist ein Ordner, den Ihr Freund in {app} mit Ihnen geteilt hat. Drei Schritte:",
+        "accept": {
+          "gdrive": "Öffnen Sie die E-Mail von Google Drive und öffnen Sie den geteilten Ordner.",
+          "dropbox": "Öffnen Sie die E-Mail von Dropbox und fügen Sie den geteilten Ordner zu Ihrer Dropbox hinzu.",
+          "onedrive": "Öffnen Sie die E-Mail von OneDrive und öffnen Sie den geteilten Ordner.",
+          "icloud": "Öffnen Sie die iCloud-Drive-Einladung, die Ihr Freund geschickt hat, und nehmen Sie sie an.",
+          "other": "Sorgen Sie dafür, dass der Ordner Ihres Freundes auf diesem Computer angekommen ist."
+        },
+        "sync": {
+          "gdrive": "Fügen Sie ihn in Google Drive zu Ihrer Ablage hinzu: Rechtsklick auf den Ordner ▸ Organisieren ▸ Verknüpfung hinzufügen, und wählen Sie Meine Ablage. Google Drive for desktop muss auf diesem Computer installiert sein.",
+          "dropbox": "Prüfen Sie, ob die Dropbox-App auf diesem Computer ihn synchronisiert hat.",
+          "onedrive": "Wählen Sie in OneDrive beim Ordner „Verknüpfung zu Meine Dateien hinzufügen“, damit er auf diesen Computer synchronisiert wird.",
+          "icloud": "Er erscheint in iCloud Drive auf diesem Mac, unter dem Namen, den Ihr Freund ihm gegeben hat.",
+          "other": "Er sollte in einem Ordner auf diesem Computer liegen, der mit dem Ordner Ihres Freundes abgeglichen wird."
+        },
+        "pick": "Wählen Sie diesen Ordner. (Der Ordner direkt darüber funktioniert auch.)",
+        "chooseFolder": "Ordner wählen…",
+        "githubIntro": "Diese Sammlung ist das private GitHub-Repository {repo}. Melden Sie sich mit dem GitHub-Konto an, das Ihr Freund eingeladen hat, und treten Sie dann bei.",
+        "join": "Der Sammlung beitreten",
+        "notInvited": "Sie sind als @{login} angemeldet, aber diese Sammlung wurde noch nicht mit diesem Konto geteilt. Bitten Sie Ihren Freund, @{login} einzuladen, und drücken Sie dann erneut auf Beitreten.",
+        "folderIntroOther": "Diese Sammlung ist ein Ordner, den ein Freund mit Ihnen geteilt hat. Drei Schritte:"
+      },
+      "joinedTitle": "„{name}“ wurde hinzugefügt",
+      "joinedText": "Sie hat einen eigenen Reiter unter Datei ▸ Projekte durchsuchen. Speichern Sie ein Arbeitsblatt darin mit Arbeitsblatt ▸ In privater Sammlung speichern…",
+      "local": {
+        "title": "Einen Sammlungsordner hinzufügen, der schon auf diesem Computer liegt",
+        "intro": "Wählen Sie den Ordner einer Sammlung – einen, den Sie aus dieser Liste entfernt haben, oder einen, der von einem anderen Ihrer Computer hierher synchronisiert wurde. Welcher Dienst hält ihn aktuell? (Davon hängt ab, was Ihre Freunde beim Teilen gesagt bekommen.)"
+      }
+    },
+    "browse": {
+      "refresh": "Aktualisieren",
+      "openLatest": "Neueste öffnen",
+      "revisions": {
+        "one": "{count} Version",
+        "other": "{count} Versionen"
+      },
+      "forked": {
+        "one": "{count} Personen haben von derselben Version aus gespeichert, deshalb werden beide behalten.",
+        "other": "{count} Personen haben von derselben Version aus gespeichert, deshalb wird jede behalten. Öffnen Sie die, mit der Sie weitermachen möchten."
+      },
+      "latest": "neueste",
+      "otherVersion": "eine andere Version",
+      "someone": "jemand",
+      "search": "Diese Sammlung durchsuchen",
+      "empty": "In dieser Sammlung ist noch nichts. Speichern Sie ein Arbeitsblatt mit Arbeitsblatt ▸ In privater Sammlung speichern…",
+      "openVersion": "Die Version vom {when} von {who} öffnen"
+    },
+    "save": {
+      "intro": "Speichern Sie dieses Arbeitsblatt dort, wo die Freunde, mit denen Sie die Sammlung teilen, es öffnen und daran weiterarbeiten können.",
+      "store": "Sammlung",
+      "saveAs": "Speichern als",
+      "asVersion": "Eine neue Version von „{title}“",
+      "asNew": "Ein neuer Entwurf",
+      "noteLabel": "Was hat sich geändert? (optional)",
+      "notePlaceholder": "z. B. Takt auf einen 555 umgestellt",
+      "private": "Nur Personen, mit denen die Sammlung geteilt ist, können es sehen.",
+      "running": "Stoppen Sie die Schaltung, um sie zu speichern.",
+      "save": "Speichern",
+      "saving": "Wird gespeichert…",
+      "behind": "{who} hat nach der Version, die Sie geöffnet haben, eine neuere gespeichert ({when}). Sie können diese öffnen und damit weitermachen oder Ihre daneben speichern — dann werden beide Versionen behalten.",
+      "openTheirs": "Die andere öffnen",
+      "saveAlongside": "Meine daneben speichern",
+      "savedTitle": "Gespeichert",
+      "saved": "In „{store}“ gespeichert.",
+      "noStoreTitle": "Noch keine private Sammlung",
+      "noStore": "Fügen Sie zuerst eine private Sammlung hinzu, unter Einstellungen ▸ Galerie ▸ Private Sammlungen.",
+      "linkLost": "Der Entwurf, aus dem dieses Arbeitsblatt stammt, konnte gerade nicht gelesen werden (offline oder noch nicht synchronisiert), darum wird es als neuer Entwurf gespeichert."
+    },
+    "linkCopied": "Link kopiert.",
+    "linkHintFolderOther": "Senden Sie diesen Link an einen Freund. Er braucht auch den Ordner selbst: Sorgen Sie dafür, dass er auf seinen Computer gelangt und er darin speichern kann.",
+    "actionFor": "{action}: {name}"
   }
 }

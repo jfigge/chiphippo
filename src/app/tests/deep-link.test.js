@@ -99,3 +99,17 @@ test("argv: a Linux file manager's file: URL is decoded, never resolved against 
   assert.deepEqual(launchRequests(["bin", "file:///home/u/a%2F..%2Fb.chiphippo"]), []); // prettier-ignore
   assert.deepEqual(launchRequests(["bin", "file:///home/u/a%2f..%2fb.chiphippo"]), []); // prettier-ignore
 });
+
+test("a store's share link is the store it names, and only where it is", () => {
+  const { storeLink } = require("../../web/scripts/stores/store-format.js");
+  const ref = { id: "s-0123456789abcdef", name: "Lab", kind: "github", where: { repo: "ann/lab" } }; // prettier-ignore
+  assert.deepEqual(parseDeepLink(storeLink(ref, { web: false })), { kind: "store", ref }); // prettier-ignore
+  // The web page's form is not an OS link (the page hands it over itself).
+  assert.equal(parseDeepLink(storeLink(ref)), null);
+  assert.equal(parseDeepLink("chiphippo://store/add#bm9wZQ"), null);
+  assert.equal(
+    parseDeepLink(`chiphippo://store/add#${"A".repeat(2000)}`),
+    null,
+  );
+  assert.deepEqual(launchRequests(["app", storeLink(ref, { web: false })]), [{ kind: "link", url: storeLink(ref, { web: false }) }]); // prettier-ignore
+});

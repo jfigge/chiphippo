@@ -17,8 +17,9 @@
  * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// gallery-share.js — Desktop ▸ Share to Gallery… (the gallery work, Phase 5;
-// the desktop app and the web build). One card: the four fields a sharer
+// gallery-share.js — Share to Gallery (the gallery work, Phase 5): the Public
+// side of Desktop ▸ Share To… in the desktop app (share-to.js), and the web
+// build's whole card. One pane: the four fields a sharer
 // writes, what the gallery's validator makes of the design, what will be
 // published and who sees what — then Share publicly, the ONE press that sends
 // anything (main.js `shareToGallery`). A share that goes is remembered in
@@ -116,7 +117,9 @@ export function fieldProblem(problems) {
 }
 
 /**
- * Open Share to Gallery for one desktop.
+ * Open Share to Gallery for one desktop, on its own — the web build's card,
+ * which has no private stores beside it. The desktop app's Desktop ▸ Share
+ * To… is the same card with a Public | Private switch (share-to.js).
  * @param {object} deps
  * @param {object} deps.bridge - window.chiphippo.
  * @param {object|null} deps.desktop - `ProjectWorkspace.portableDesktop(id)`.
@@ -126,17 +129,9 @@ export function fieldProblem(problems) {
  * @param {() => boolean} deps.isRunning
  * @returns {Promise<string|null>} the entry id it was sent as, or null.
  */
-export async function shareToGallery({
-  bridge,
-  desktop,
-  settings,
-  saveSettings,
-  openSettings,
-  isRunning,
-}) {
-  if (!desktop) return null;
-  const consent = settings().galleryShare;
-  if (consent === "no") {
+export async function shareToGallery(deps) {
+  if (!deps.desktop) return null;
+  if (deps.settings().galleryShare === "no") {
     const go = await new Promise((resolve) =>
       PopupManager.choose({
         title: t("gallery.share.offTitle"),
@@ -145,182 +140,267 @@ export async function shareToGallery({
         onChoose: resolve,
       }),
     );
-    if (go) openSettings("gallery");
+    if (go) deps.openSettings("gallery");
     return null;
   }
-
-  const check = checkDesign(desktop);
-  const designSays = designProblem(check);
-  const running = isRunning();
-
   return new Promise((resolve) => {
-    let sentAs = null;
-    let sending = false;
-    let closed = false;
-    const tellSent = (title) =>
-      PopupManager.notify({
-        title: t("gallery.share.sentTitle"),
-        message: t("gallery.share.sentMessage", { title }),
-      });
-    const field = (labelKey, control) =>
-      el("label", { class: "gallery-share-field" }, [
-        el("span", { class: "popup-label", text: t(labelKey) }),
-        control,
-      ]);
-    const title = el("input", {
-      class: "properties-text-input",
-      type: "text",
-      value: desktop.name ?? "",
-      maxLength: MAX_TITLE,
-      "data-autofocus": true,
-    });
-    const author = el("input", {
-      class: "properties-text-input",
-      type: "text",
-      value: settings().galleryAuthor ?? "",
-      maxLength: MAX_AUTHOR,
-      placeholder: t("gallery.share.authorPlaceholder"),
-    });
-    const description = el("textarea", {
-      class: "properties-textarea",
-      rows: 4,
-      maxLength: MAX_DESCRIPTION,
-    });
-    description.value = desktop.description ?? "";
-    const tags = el("input", {
-      class: "properties-text-input",
-      type: "text",
-      placeholder: t("gallery.share.tagsPlaceholder"),
-    });
-    const fieldNote = el("p", { class: "gallery-share-problem", "aria-live": "polite" }); // prettier-ignore
-    const failure = el("p", { class: "gallery-share-problem", role: "alert" });
-    const send = el("button", {
-      class: "btn popup-btn btn--primary",
-      type: "button",
-      text: t("gallery.share.send"),
-    });
-
-    const entry = () =>
-      checkEntryText({
-        title: title.value,
-        author: author.value,
-        description: description.value,
-        tags: parseTags(tags.value),
-      });
-    const refresh = () => {
-      const says = fieldProblem(entry().problems);
-      fieldNote.textContent = says ?? "";
-      fieldNote.hidden = !says;
-      send.disabled = sending || running || Boolean(designSays) || Boolean(says); // prettier-ignore
-    };
-    for (const input of [title, author, description, tags]) {
-      input.addEventListener("input", refresh);
-    }
-
-    send.addEventListener("click", async () => {
-      const { value, problems } = entry();
-      if (problems.length || sending) return;
-      sending = true;
-      failure.hidden = true;
-      send.textContent = t("gallery.share.sending");
-      refresh();
-      // A call that THROWS (rather than answering a code) is "unavailable":
-      // left to reject, it held the button on "Sending…" for good.
-      let res;
-      try {
-        res = await bridge.gallery.share({ ...desktop, entry: value });
-      } catch (err) {
-        console.error("[gallery] the share could not be sent:", err);
-        res = { ok: false, code: "unavailable" };
-      }
-      sending = false;
-      // The name is remembered for next time, and the share in Settings ▸
-      // Gallery ▸ Your shares, to ask after.
-      const keep = () =>
-        saveSettings({
-          galleryAuthor: value.author,
-          galleryShares: rememberShare(settings().galleryShares, {
-            id: res.id,
-            number: res.number,
-            key: res.key,
-            title: value.title,
-            at: new Date().toISOString().slice(0, 10),
-          }),
-        });
-      // Closed while it was on its way: a share that went still says so.
-      if (closed) {
-        if (res?.ok) {
-          void keep();
-          tellSent(value.title);
-        }
-        return;
-      }
-      send.textContent = t("gallery.share.send");
-      if (res?.ok) {
-        sentAs = { id: res.id, title: value.title };
-        void keep();
-        PopupManager.close();
-        return;
-      }
-      const code = ERROR_CODES.includes(res?.code) ? res.code : "unavailable";
-      failure.textContent = t(`gallery.share.error.${code}`);
-      failure.hidden = false;
-      refresh();
-    });
-
-    const facts = check.derived
-      ? `${t("gallery.factChips", { count: check.derived.chips })} · ${t("gallery.factParts", { count: check.derived.parts })}` // prettier-ignore
-      : "";
-    const verdict = designSays
-      ? el("p", { class: "gallery-share-verdict gallery-share-verdict--bad", text: designSays }) // prettier-ignore
-      : el("p", { class: "gallery-share-verdict", text: t("gallery.share.design.ok", { facts }) }); // prettier-ignore
-    const consentBlock =
-      consent === "yes"
-        ? el("p", { class: "gallery-share-consent", text: t("gallery.share.consentLine") }) // prettier-ignore
-        : el("div", { class: "gallery-share-consent" }, [
-            el("p", { class: "gallery-share-consent-title", text: t("gallery.share.consentTitle") }), // prettier-ignore
-            el(
-              "ul",
-              { class: "gallery-share-consent-list" },
-              ["public", "sent", "server", "review"].map((k) =>
-                el("li", { text: t(`gallery.share.consent.${k}`) }),
-              ),
-            ),
-          ]);
-
-    fieldNote.hidden = true;
-    failure.hidden = true;
+    const pane = buildGalleryShare(deps);
     PopupManager.dialog({
       title: t("gallery.share.title"),
       className: "gallery-share-popup",
       body: [
         el("p", { class: "popup-message", text: t("gallery.share.intro") }),
-        field("gallery.share.titleLabel", title),
-        field("gallery.share.authorLabel", author),
-        field("gallery.share.descriptionLabel", description),
-        field("gallery.share.tagsLabel", tags),
-        fieldNote,
-        verdict,
-        consentBlock,
-        running &&
-          el("p", { class: "gallery-share-problem", text: t("gallery.share.running") }), // prettier-ignore
-        failure,
-        el("div", { class: "gallery-share-footer" }, [
-          el("button", {
-            class: "btn popup-btn btn--secondary",
-            type: "button",
-            text: t("common.cancel"),
-            onClick: () => PopupManager.close(),
-          }),
-          send,
-        ]),
-      ].filter(Boolean),
-      onClose: () => {
-        closed = true;
-        if (sentAs) tellSent(sentAs.title);
-        resolve(sentAs?.id ?? null);
-      },
+        ...pane.fields.list,
+        ...pane.after,
+        el("div", { class: "gallery-share-footer" }, [cancelButton(), pane.send]), // prettier-ignore
+      ],
+      onClose: () => resolve(pane.closed()),
     });
+    pane.refresh();
+  });
+}
+
+/** The card's Cancel. */
+export function cancelButton() {
+  return el("button", {
+    class: "btn popup-btn btn--secondary",
+    type: "button",
+    text: t("common.cancel"),
+    onClick: () => PopupManager.close(),
+  });
+}
+
+/**
+ * The four things every share asks — Title, Your name, Description, Tags —
+ * ONE set, in this order, whichever way the desktop goes (the gallery or a
+ * private store; share-to.js). Seeded from the desktop and the name used
+ * last.
+ * @param {{desktop: object, settings: () => object}} deps
+ * @returns {{title: HTMLInputElement, author: HTMLInputElement,
+ *   description: HTMLTextAreaElement, tags: HTMLInputElement,
+ *   rows: {title: HTMLElement, author: HTMLElement,
+ *   description: HTMLElement, tags: HTMLElement}, list: HTMLElement[]}}
+ */
+export function buildEntryFields({ desktop, settings }) {
+  const field = (labelKey, control) =>
+    el("label", { class: "gallery-share-field" }, [
+      el("span", { class: "popup-label", text: t(labelKey) }),
+      control,
+    ]);
+  const title = el("input", {
+    class: "properties-text-input",
+    type: "text",
+    value: desktop.name ?? "",
+    maxLength: MAX_TITLE,
+    "data-autofocus": true,
+  });
+  const author = el("input", {
+    class: "properties-text-input",
+    type: "text",
+    value: settings().galleryAuthor ?? "",
+    maxLength: MAX_AUTHOR,
+    placeholder: t("gallery.share.authorPlaceholder"),
+  });
+  const description = el("textarea", {
+    class: "properties-textarea",
+    rows: 4,
+    maxLength: MAX_DESCRIPTION,
+  });
+  description.value = desktop.description ?? "";
+  const tags = el("input", {
+    class: "properties-text-input",
+    type: "text",
+    placeholder: t("gallery.share.tagsPlaceholder"),
+  });
+  const rows = {
+    title: field("gallery.share.titleLabel", title),
+    author: field("gallery.share.authorLabel", author),
+    description: field("gallery.share.descriptionLabel", description),
+    tags: field("gallery.share.tagsLabel", tags),
+  };
+  return {
+    title,
+    author,
+    description,
+    tags,
+    rows,
+    list: [rows.title, rows.author, rows.description, rows.tags],
+  };
+}
+
+/**
+ * Share consent "no": what the Public side says instead — the web build's
+ * card's words, and the way to Settings ▸ Gallery as its button.
+ * @returns {{usesFields: false, after: Node[], send: HTMLElement,
+ *   refresh: () => void, closed: () => null}}
+ */
+export function buildGalleryShareOff({ openSettings }) {
+  return {
+    usesFields: false,
+    after: [el("p", { class: "popup-message", text: t("gallery.share.offMessage") })], // prettier-ignore
+    send: el("button", {
+      class: "btn popup-btn btn--primary",
+      type: "button",
+      text: t("gallery.access.openSettings"),
+      onClick: () => {
+        PopupManager.close();
+        openSettings("gallery");
+      },
+    }),
+    refresh: () => {},
+    closed: () => null,
+  };
+}
+
+/**
+ * Share to Gallery's half of a card: what it adds after the four fields
+ * (the verdict, the consent) and its Share Publicly button. Pressing it
+ * sends; a share that goes closes the card (`PopupManager.close`).
+ * @param {object} deps - as `shareToGallery`'s.
+ * @param {{fields?: object, onBusy?: (busy: boolean) => void}} [host] -
+ *   the four fields (`buildEntryFields`; made here when not handed in), and
+ *   who is told while a share is on its way.
+ * @returns {{usesFields: true, fields: object, after: Node[],
+ *   send: HTMLElement, refresh: () => void, closed: () => string|null}}
+ *   `closed` is the card's onClose: it says a share that went, and answers
+ *   the entry id it was sent as.
+ */
+export function buildGalleryShare(
+  deps,
+  { fields = buildEntryFields(deps), onBusy = () => {} } = {},
+) {
+  const { bridge, desktop, settings, saveSettings, isRunning } = deps;
+  const { title, author, description, tags } = fields;
+  const consent = settings().galleryShare;
+  const check = checkDesign(desktop);
+  const designSays = designProblem(check);
+  const running = isRunning();
+
+  let sentAs = null;
+  let sending = false;
+  let closed = false;
+  const tellSent = (title) =>
+    PopupManager.notify({
+      title: t("gallery.share.sentTitle"),
+      message: t("gallery.share.sentMessage", { title }),
+    });
+  const fieldNote = el("p", { class: "gallery-share-problem", "aria-live": "polite" }); // prettier-ignore
+  const failure = el("p", { class: "gallery-share-problem", role: "alert" });
+  const send = el("button", {
+    class: "btn popup-btn btn--primary",
+    type: "button",
+    text: t("gallery.share.send"),
+  });
+
+  const entry = () =>
+    checkEntryText({
+      title: title.value,
+      author: author.value,
+      description: description.value,
+      tags: parseTags(tags.value),
+    });
+  const refresh = () => {
+    const says = fieldProblem(entry().problems);
+    fieldNote.textContent = says ?? "";
+    fieldNote.hidden = !says;
+    send.disabled = sending || running || Boolean(designSays) || Boolean(says); // prettier-ignore
+  };
+  for (const input of [title, author, description, tags]) {
+    input.addEventListener("input", refresh);
+  }
+
+  send.addEventListener("click", async () => {
+    const { value, problems } = entry();
+    if (problems.length || sending) return;
+    sending = true;
+    onBusy(true);
+    failure.hidden = true;
+    send.textContent = t("gallery.share.sending");
+    refresh();
+    // A call that THROWS (rather than answering a code) is "unavailable":
+    // left to reject, it held the button on "Sending…" for good.
+    let res;
+    try {
+      res = await bridge.gallery.share({ ...desktop, entry: value });
+    } catch (err) {
+      console.error("[gallery] the share could not be sent:", err);
+      res = { ok: false, code: "unavailable" };
+    }
+    sending = false;
+    onBusy(false);
+    // The name is remembered for next time, and the share in Settings ▸
+    // Gallery ▸ Your shares, to ask after.
+    const keep = () =>
+      saveSettings({
+        galleryAuthor: value.author,
+        galleryShares: rememberShare(settings().galleryShares, {
+          id: res.id,
+          number: res.number,
+          key: res.key,
+          title: value.title,
+          at: new Date().toISOString().slice(0, 10),
+        }),
+      });
+    // Closed while it was on its way: a share that went still says so.
+    if (closed) {
+      if (res?.ok) {
+        void keep();
+        tellSent(value.title);
+      }
+      return;
+    }
+    send.textContent = t("gallery.share.send");
+    if (res?.ok) {
+      sentAs = { id: res.id, title: value.title };
+      void keep();
+      PopupManager.close();
+      return;
+    }
+    const code = ERROR_CODES.includes(res?.code) ? res.code : "unavailable";
+    failure.textContent = t(`gallery.share.error.${code}`);
+    failure.hidden = false;
     refresh();
   });
+
+  const facts = check.derived
+    ? `${t("gallery.factChips", { count: check.derived.chips })} · ${t("gallery.factParts", { count: check.derived.parts })}` // prettier-ignore
+    : "";
+  const verdict = designSays
+    ? el("p", { class: "gallery-share-verdict gallery-share-verdict--bad", text: designSays }) // prettier-ignore
+    : el("p", { class: "gallery-share-verdict", text: t("gallery.share.design.ok", { facts }) }); // prettier-ignore
+  const consentBlock =
+    consent === "yes"
+      ? el("p", { class: "gallery-share-consent", text: t("gallery.share.consentLine") }) // prettier-ignore
+      : el("div", { class: "gallery-share-consent" }, [
+          el("p", { class: "gallery-share-consent-title", text: t("gallery.share.consentTitle") }), // prettier-ignore
+          el(
+            "ul",
+            { class: "gallery-share-consent-list" },
+            ["public", "sent", "server", "review"].map((k) =>
+              el("li", { text: t(`gallery.share.consent.${k}`) }),
+            ),
+          ),
+        ]);
+
+  fieldNote.hidden = true;
+  failure.hidden = true;
+  return {
+    usesFields: true,
+    fields,
+    after: [
+      fieldNote,
+      verdict,
+      consentBlock,
+      running &&
+        el("p", { class: "gallery-share-problem", text: t("gallery.share.running") }), // prettier-ignore
+      failure,
+    ].filter(Boolean),
+    send,
+    refresh,
+    closed: () => {
+      closed = true;
+      if (sentAs) tellSent(sentAs.title);
+      return sentAs?.id ?? null;
+    },
+  };
 }

@@ -166,13 +166,16 @@ everyone.
   cards (`components/recent-projects-view.js`, the gallery's own `.gallery-card` + a ×;
   main's `project:recent:details` → `{path, name, savedAt, missing, thumb, desktops}`; a
   click → `browse:open-recent`, which relays an MRU path ONLY as File ▸ Open Recent's own
-  push) — and **Gallery**. It opens WHATEVER the access answer: the Recent tab never
-  touches the network, and every gallery read is still gated, so a refused `gallery:index`
-  makes the tab show an Allow… card → `browse:ask-access` → the app window runs
-  `browseGallery` (`components/gallery-open.js`): the desktop app asks ONCE (Allow / Not
-  now, both stored as `galleryAccess` "yes"/"no" — D8), a stored no answers with a card
-  pointing at Settings ▸ Gallery; the web build never asks; then `gallery:show("gallery")`
-  reloads the tab.
+  push) — and **Gallery**. It opens WHATEVER the access answer, but **the Gallery tab
+  is there ONLY while access is on** (Jason, 2026-11-22: "Hide it when the gallery is
+  disabled, period. No option in the gallery to re-enable it"). Off or never answered, the
+  tab is hidden, nothing in the window offers to turn it on (Settings ▸ Gallery ▸ Public
+  does), and a window asked for the Gallery tab opens on Recent. `gallery-window.js` reads
+  `settings.galleryAccess` before the first tab is shown and again on every focus; a read
+  main refuses meanwhile (`refused`, or an Open answered false) hides the tab too. The web
+  build always shows it. (The old Allow… card, `browse:ask-access` and `browseGallery` are
+  gone; `galleryAccess`, the one-time question, is still asked by a `chiphippo://gallery/`
+  link.)
 - **The recent projects' pictures** (`app/store/thumb-store.js`): a CACHE in
   `userData/thumbs/<sha256(path)>.png` + `.json` (`{desktops}`), never in the project file
   and no path in a file name. `project:thumb:capture {path, rect, desktops}` (app window
@@ -196,7 +199,7 @@ everyone.
   entry.json's `pin` and `engine`, best-effort) — `:show` alone is NOT gated (the Browse window above). Every read is capped by kind
   (`client.js`: index 2 MiB, entry 64 KiB, thumbnail 512 KiB, design 512 KiB), counted as
   the body STREAMS (`readCapped` — content-length is the compressed size).
-  `ipc-guard.js` gives the Browse window (`isGallery`) those four reads, Open, and the Recent tab's `project:recent:details`/`:remove`, `browse:open-recent` and `browse:ask-access` — nothing that opens a path itself.
+  `ipc-guard.js` gives the Browse window (`isGallery`) those four reads, Open, and the Recent tab's `project:recent:details`/`:remove`, `browse:open-recent` — nothing that opens a path itself.
 - **A developer can point the desktop app at a local site**: `CHIPHIPPO_GALLERY_URL`,
   honoured only in a dev launch and only for a loopback `http://127.0.0.1|localhost`
   address (`sources.js` `devBase`) — `node scripts/serve-web.mjs website --port 8099` +
@@ -286,8 +289,8 @@ everyone.
     `workspace.openFile` (the open project's own file is left alone, nothing asked) /
     `workspace.importFile` (Import with no dialog) / an unreadable notice. It reaches
     no network.
-  - A **link** → `gallery:link` `{id}`. The renderer asks `galleryAccess` (Browse Gallery…'s question, factored out of
-    `browseGallery`) and then `openFromGallery`, so every check of Phase 3 applies;
+  - A **link** → `gallery:link` `{id}`. The renderer asks `galleryAccess` (the one-time access question —
+    the only place it is still asked) and then `openFromGallery`, so every check of Phase 3 applies;
     main's `gallery:open-entry` checks the answer again.
 - **Registration**: `build.protocols` (`chiphippo`) and `build.fileAssociations`
   (`chiphippo`, `application/x-chiphippo`, Editor) — electron-builder writes the mac/MAS
@@ -314,8 +317,11 @@ everyone.
   gallery's `validate.yml` → site deploy), `tidy.yml` (deletes `share/<id>` on close).
 - **The app** (desktop AND web since 2026-11-05 — the web page's CSP already allows
   `https:` for the AI builder; the Worker answers CORS for chiphippo.com): Desktop ▸ Share
-  to Gallery… and a tab menu's row (`onShare`; both off while
-  running — the menu item follows `canDuplicate`) → `components/gallery-share.js`. The
+  To… and a tab menu's row (`onShare`; both off while
+  running — the menu item follows `canDuplicate`) → `components/share-to.js`, whose
+  Public side is `components/gallery-share.js` (`buildGalleryShare`, over the shared
+  `buildEntryFields`; the Private side is a store — stores.md). The web build has no Private side and opens `shareToGallery`'s
+  own card (2026-11-23; the item was "Share to Gallery…" until then). The
   design is judged first with `validateSubmission` (identity migrate: the live doc is
   this build's); Share consent (`galleryShare`) ask → the block, yes → one line, no → a
   card to Settings ▸ Gallery; `galleryAuthor` remembers the name. **Share Publicly** is

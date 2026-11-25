@@ -50,8 +50,12 @@ const path = require("path");
 
 const io = require("./io");
 
-/** Provider ids we will store a key for — an allowlist, not free-form. */
-const PROVIDERS = Object.freeze(["anthropic", "openai-compat"]);
+/** The AI providers a key may be stored for (Settings ▸ AI). */
+const AI_PROVIDERS = Object.freeze(["anthropic", "openai-compat"]);
+/** Every id we will store a secret for — an allowlist, not free-form: the AI
+    providers, and `github`, a private store's sign-in (stores/github.js),
+    which main alone stores and only for https://api.github.com. */
+const PROVIDERS = Object.freeze([...AI_PROVIDERS, "github"]);
 
 class CredentialStore {
   /**
@@ -195,4 +199,4 @@ class CredentialStore {
   }
 }
 
-module.exports = { CredentialStore, PROVIDERS };
+module.exports = { AI_PROVIDERS, CredentialStore, PROVIDERS };

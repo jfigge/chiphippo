@@ -30,12 +30,16 @@ opens an email to the gallery's maintainer in your mail program, naming the
 design; say what is wrong and send it. Every report is read, and a design that
 breaks the gallery's rules is taken down.
 
-**The first time**, the Gallery tab asks you to **Allow…** Chip Hippo to read
-the gallery. Browsing
-reads the list of designs and their pictures from chiphippo.com, and a design
-when you open one; nothing of yours is sent. Choose **Allow** to go on, or
-**Not now** to leave it. You can change the answer later in
-**Settings ▸ Gallery ▸ Gallery access**.
+**The Gallery tab appears once you allow it.** Browsing reads the list of
+designs and their pictures from chiphippo.com, and a design when you open one,
+so Chip Hippo doesn't show the tab until you say it may: set **Settings ▸
+Gallery ▸ Gallery access** to **Yes**. Nothing of yours is sent. Set it back to
+**No** and the tab goes away again. (A gallery link opened from a web page also
+asks, the first time. Chip Hippo in the browser is already on the gallery's
+website, so it always shows the tab.)
+
+For designs that only you and your friends can see, use a
+[private store](private-stores.md) instead.
 
 ## Opening a design
 
@@ -80,10 +84,18 @@ three buttons, then **Copy link** and **Report** (as in the app, above):
 ## Sharing a design
 
 Any desktop can be shared to the gallery, from the desktop app or from
-[Chip Hippo in the browser](web.md). Choose
-**Desktop ▸ Share to Gallery…**, or right-click a desktop's tab and choose
-**Share to Gallery…** to share that one. Stop the circuit first; sharing is
-greyed out while it runs.
+[Chip Hippo in the browser](web.md). Choose **Desktop ▸ Share To…**, or
+right-click a desktop's tab and choose **Share To…** to share that one. Stop
+the circuit first; sharing is greyed out while it runs.
+
+In the desktop app a switch at the card's top chooses where it goes:
+**Public** shares to the gallery, and **Private** saves to one of your
+[private stores](private-stores.md) — the **Store** picker beside the switch
+works only while it is on **Private**. The fields below are the same either
+way and stay where they are, so you can flip the switch without losing what
+you typed. The card opens on the side you used last, or
+on **Private** for a desktop you opened from a store. Chip Hippo in the
+browser has no private stores, so its card has no switch.
 
 The card asks for four things:
 
@@ -158,15 +170,17 @@ it again under a new title.
 
 ## Settings ▸ Gallery
 
-- **Gallery access** — whether Chip Hippo may read the gallery (Yes or No). It
-  is asked the first time you browse, so you seldom need to set it here. Chip
-  Hippo in the browser is already on the gallery's website, so it has no such
-  setting.
+The tab has two parts: **Public**, for the gallery, and **Private**, for your
+[private stores](private-stores.md). Public holds:
+
+- **Gallery access** — whether Chip Hippo may read the gallery (Yes or No).
+  Until it is Yes, Browse Projects has no Gallery tab. Chip Hippo in the
+  browser is already on the gallery's website, so it has no such setting.
 - **Your shares** — the designs you've shared, and **Check status** (above).
-- **Share consent** — what Share to Gallery shows before it sends:
+- **Share consent** — what **Share To… ▸ Public** shows before it sends:
   - **Ask** (the default) shows the full notice above every time.
   - **Yes** shows it in one line.
-  - **No** switches sharing off; Share to Gallery then points you here.
+  - **No** switches sharing off; **Share To… ▸ Public** then points you here.
 
 ## Privacy
 

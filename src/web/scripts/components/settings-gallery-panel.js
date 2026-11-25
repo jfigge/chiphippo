@@ -37,6 +37,10 @@
 //     a share's id is the entry id the gallery publishes it under), to send
 //     to someone.
 //
+//   · Private stores — the stores this computer has added and Add store…
+//     (settings-stores-panel.js), in the desktop app (`stores`). Then the
+//     panel is two tabs, Public (the three above) | Private.
+//
 // The web build is on the gallery's own site and never asks for access, so
 // there the access row is left out.
 
@@ -44,6 +48,7 @@ import { el } from "../dom.js";
 import { formatDate, t } from "../i18n.js";
 import { buildSegmented } from "./segmented-picker.js";
 import { entryPageUrl } from "../gallery/entry-format.js";
+import { buildStoresRows } from "./settings-stores-panel.js";
 
 /** How long Copy link says "Link copied" (ms). */
 const COPIED_MS = 2000;
@@ -110,7 +115,7 @@ export function galleryAnswers(settings = {}) {
 export function buildGalleryPanel(
   settings,
   emit,
-  { rowWithNote, web = false, shareStatus = null, storedShares = null },
+  { rowWithNote, web = false, shareStatus = null, storedShares = null, stores = null }, // prettier-ignore
 ) {
   const answers = galleryAnswers(settings);
   const access = buildSegmented({
@@ -132,22 +137,100 @@ export function buildGalleryPanel(
     ariaLabel: t("settings.gallery.share"),
     onPick: (galleryShare) => emit({ galleryShare }),
   });
-  return {
-    rows: [
-      !web &&
-        rowWithNote({
-          label: t("settings.gallery.access"),
-          control: access,
-          notes: [t("settings.gallery.accessHint")],
-        }),
+  const publicRows = [
+    !web &&
       rowWithNote({
-        label: t("settings.gallery.share"),
-        control: share,
-        notes: [t("settings.gallery.shareHint")],
+        label: t("settings.gallery.access"),
+        control: access,
+        notes: [t("settings.gallery.accessHint")],
       }),
-      ...buildShares(settings, emit, { rowWithNote, shareStatus, storedShares }), // prettier-ignore
-    ].filter(Boolean),
+    rowWithNote({
+      label: t("settings.gallery.share"),
+      control: share,
+      notes: [t("settings.gallery.shareHint")],
+    }),
+    ...buildShares(settings, emit, { rowWithNote, shareStatus, storedShares }), // prettier-ignore
+  ].filter(Boolean);
+  // Without the private stores there is only the public gallery: no tabs.
+  if (!stores?.bridge) return { rows: publicRows, destroy: () => {} };
+  const privateRows = buildStoresRows({ rowWithNote, ...stores });
+  return {
+    rows: galleryTabs({ public: publicRows, private: privateRows.rows }),
+    destroy: privateRows.destroy,
   };
+}
+
+/** Open Settings ▸ Gallery on this tab next time ("public" | "private") —
+    a card pointing the user at the private stores says which. */
+export function preferGalleryTab(key) {
+  if (key === "public" || key === "private") shownGalleryTab = key;
+}
+
+/** The tab the Gallery panel last showed, for the session: Settings is
+    rebuilt each time it opens, and comes back where it was left. Desktop ▸
+    Share To…'s Public | Private switch reads and sets the same answer
+    (share-to.js), so the two open on the same side. */
+let shownGalleryTab = "public";
+
+/** "public" | "private": the side Settings ▸ Gallery (and Share To…) last
+    showed this session. */
+export function galleryTabShown() {
+  return shownGalleryTab;
+}
+
+/**
+ * Public | Private over the Gallery panel: the published gallery's answers
+ * and shares, and the private stores (settings-stores-panel.js). Both panes
+ * are built once; a tab only shows one and hides the other.
+ * @param {{public: HTMLElement[], private: HTMLElement[]}} panes
+ * @returns {HTMLElement[]} the strip, then the two panes.
+ */
+function galleryTabs(panes) {
+  const keys = ["public", "private"];
+  const boxes = {};
+  const buttons = {};
+  const strip = el("div", {
+    class: "settings-gallery-tabs",
+    role: "tablist",
+    "aria-label": t("settings.gallery.tabsLabel"),
+  });
+  const show = (key) => {
+    shownGalleryTab = key;
+    for (const k of keys) {
+      boxes[k].hidden = k !== key;
+      buttons[k].setAttribute("aria-selected", String(k === key));
+      buttons[k].tabIndex = k === key ? 0 : -1;
+    }
+  };
+  for (const key of keys) {
+    boxes[key] = el(
+      "div",
+      { class: "settings-gallery-pane", role: "tabpanel", id: `settings-gallery-pane-${key}`, "aria-labelledby": `settings-gallery-tab-${key}`, "data-gallery-tab": key }, // prettier-ignore
+      panes[key],
+    );
+    buttons[key] = el("button", {
+      class: "settings-gallery-tab",
+      type: "button",
+      role: "tab",
+      id: `settings-gallery-tab-${key}`,
+      "aria-controls": `settings-gallery-pane-${key}`,
+      text: t(`settings.gallery.tab.${key}`),
+      dataset: { tab: key },
+      onClick: () => show(key),
+    });
+    strip.append(buttons[key]);
+  }
+  // Arrow keys move along the strip, as a tab list's should.
+  strip.addEventListener("keydown", (event) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    const step = event.key === "ArrowRight" ? 1 : keys.length - 1;
+    const next = keys[(keys.indexOf(shownGalleryTab) + step) % keys.length];
+    show(next);
+    buttons[next].focus();
+  });
+  show(keys.includes(shownGalleryTab) ? shownGalleryTab : "public");
+  return [strip, boxes.public, boxes.private];
 }
 
 /**

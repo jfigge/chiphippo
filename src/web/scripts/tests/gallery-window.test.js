@@ -53,7 +53,7 @@ async function boot(gallery) {
   window.close = () => closed++;
   window.chiphippo = {
     i18n: { load: async () => ({ active: "en", lang: "en", messages: EN, fallback: EN, locales: ["en"] }) }, // prettier-ignore
-    settings: { get: async () => ({}) },
+    settings: { get: async () => ({ galleryAccess: "yes" }) },
     project: { recent: { details: async () => [], remove: async () => {} } },
     gallery,
   };
@@ -70,7 +70,6 @@ const counting = (over = {}) => {
     thumb: async (id, theme) => (asked.thumb.push(id), asked.themes.push(`${theme}:${id}`), { ok: true, url: `data:image/png;base64,${theme}` }), // prettier-ignore
     entry: async (id) => (asked.entry.push(id), { ok: true, entry: { ...INDEX.entries.find((e) => e.id === id), description: "about" } }), // prettier-ignore
     open: async (id) => (asked.open.push(id), true),
-    askAccess: async () => {},
     openRecent: async () => {},
     ...over,
   };
@@ -141,7 +140,7 @@ test("a picture that failed is asked for again; one that came is not", async () 
   assert.equal(asked.thumb.length, 4, "successes are");
 });
 
-test("an Open main refuses (access withdrawn) redraws the tab: the Allow… card", async () => {
+test("an Open main refuses (access withdrawn) takes the Gallery tab away, back to Recent", async () => {
   let refused = false;
   const { gallery, asked } = counting();
   gallery.index = async () => (asked.index++, refused ? { ok: false, code: "refused" } : { ok: true, index: INDEX }); // prettier-ignore
@@ -152,7 +151,10 @@ test("an Open main refuses (access withdrawn) redraws the tab: the Allow… card
   document.querySelector('#browse-pane-gallery [data-action="open"]').click();
   await settle();
   await settle();
-  assert.ok(document.querySelector("#browse-pane-gallery .browse-access"), "the Allow… card"); // prettier-ignore
+  const tab = (key) => document.querySelector(`[aria-controls="browse-pane-${key}"]`); // prettier-ignore
+  assert.equal(tab("gallery").hidden, true, "the tab is gone");
+  assert.equal(tab("recent").getAttribute("aria-selected"), "true");
+  assert.equal(document.querySelector(".browse-access"), null, "no card offering to turn it on"); // prettier-ignore
   assert.equal(cards().length, 0);
 });
 
@@ -180,7 +182,7 @@ test("a slow index read never draws over a newer answer", async () => {
   document.body.innerHTML = '<div id="gallery-root"></div>';
   window.chiphippo = {
     i18n: { load: async () => ({ active: "en", lang: "en", messages: EN, fallback: EN, locales: ["en"] }) }, // prettier-ignore
-    settings: { get: async () => ({}) },
+    settings: { get: async () => ({ galleryAccess: "yes" }) },
     project: { recent: { details: async () => [] } },
     gallery,
   };
@@ -195,10 +197,93 @@ test("a slow index read never draws over a newer answer", async () => {
   assert.equal(answers.length, 2);
   answers[1]({ ok: false, code: "refused" });
   await settle();
-  assert.ok(document.querySelector("#browse-pane-gallery .browse-access"));
+  const galleryTab = () => document.querySelector('[aria-controls="browse-pane-gallery"]'); // prettier-ignore
+  assert.equal(galleryTab().hidden, true, "refused: the tab is gone");
   answers[0]({ ok: true, index: INDEX }); // the slow first read lands last
   await settle();
   await settle();
-  assert.ok(document.querySelector("#browse-pane-gallery .browse-access"), "still the Allow… card"); // prettier-ignore
+  assert.equal(galleryTab().hidden, true, "still gone");
   assert.equal(cards().length, 0);
+});
+
+test("with Gallery access off — or never answered — there is no Gallery tab, and nothing offers to turn it on", async () => {
+  for (const stored of [{ galleryAccess: "no" }, {}]) {
+    const { gallery, asked } = counting();
+    resetDom();
+    window.history.replaceState(null, "", "/gallery.html?tab=gallery");
+    global.location = window.location;
+    document.body.innerHTML = '<div id="gallery-root"></div>';
+    window.chiphippo = {
+      i18n: { load: async () => ({ active: "en", lang: "en", messages: EN, fallback: EN, locales: ["en"] }) }, // prettier-ignore
+      settings: { get: async () => stored },
+      project: { recent: { details: async () => [], remove: async () => {} } },
+      gallery,
+    };
+    await import(`../gallery-window.js?boot=${++boots}`);
+    await settle();
+    await settle();
+    const tab = (key) => document.querySelector(`[aria-controls="browse-pane-${key}"]`); // prettier-ignore
+    assert.equal(tab("gallery").hidden, true, JSON.stringify(stored));
+    assert.equal(tab("recent").getAttribute("aria-selected"), "true", "asked for the Gallery, opened on Recent"); // prettier-ignore
+    assert.equal(asked.index, 0, "the gallery is never read");
+    assert.equal(document.querySelector(".browse-access"), null);
+    // Access switched on in Settings: the tab is back when the window comes forward.
+    stored.galleryAccess = "yes";
+    window.dispatchEvent(new window.Event("focus"));
+    await settle();
+    assert.equal(tab("gallery").hidden, false);
+  }
+});
+
+test("each private store has its own tab, after the fixed two, in the stores' own order", async () => {
+  const { gallery } = counting();
+  let stores = [
+    { id: "s-1111111111111111", name: "Bench club", kind: "folder", path: "/x/Bench club" }, // prettier-ignore
+    { id: "s-2222222222222222", name: "Lab", kind: "github", repo: "ann/site", dir: "chiphippo" }, // prettier-ignore
+  ];
+  const viewed = [];
+  resetDom();
+  window.history.replaceState(null, "", "/gallery.html?tab=stores:s-2222222222222222"); // prettier-ignore
+  global.location = window.location;
+  document.body.innerHTML = '<div id="gallery-root"></div>';
+  window.chiphippo = {
+    i18n: { load: async () => ({ active: "en", lang: "en", messages: EN, fallback: EN, locales: ["en"] }) }, // prettier-ignore
+    settings: { get: async () => ({ galleryAccess: "yes" }) },
+    project: { recent: { details: async () => [], remove: async () => {} } },
+    gallery,
+    stores: {
+      status: async () => ({ enabled: true }),
+      list: async () => stores,
+      view: async (id) => (viewed.push(id), { ok: true, entries: [] }),
+      thumb: async () => ({ ok: false }),
+      open: async () => true,
+    },
+  };
+  await import(`../gallery-window.js?boot=${++boots}`);
+  await settle();
+  await settle();
+  const labels = () => [...document.querySelectorAll(".browse-tab")].filter((b) => !b.hidden).map((b) => b.textContent); // prettier-ignore
+  assert.deepEqual(labels(), [
+    "Recent Projects",
+    "Gallery",
+    "Bench club",
+    "Lab",
+  ]);
+  const selected = () => document.querySelector('.browse-tab[aria-selected="true"]').textContent; // prettier-ignore
+  assert.equal(selected(), "Lab", "opened on the store it was asked for");
+  assert.deepEqual(viewed, ["s-2222222222222222"]);
+  assert.equal(document.querySelector(".browse-tab[title='ann/site/chiphippo']").textContent, "Lab"); // prettier-ignore
+  // Brought forward after Settings removed Lab and added another: the tabs
+  // follow, the order kept, and the window goes back to Recent.
+  stores = [stores[0], { id: "s-3333333333333333", name: "Club 2", kind: "folder", path: "/y" }]; // prettier-ignore
+  window.dispatchEvent(new window.Event("focus"));
+  await settle();
+  await settle();
+  assert.deepEqual(labels(), ["Recent Projects", "Gallery", "Bench club", "Club 2"]); // prettier-ignore
+  assert.equal(selected(), "Recent Projects");
+  // A push naming a store opens its tab.
+  window.dispatchEvent(new window.CustomEvent("chiphippo:browse-tab", { detail: "stores:s-1111111111111111" })); // prettier-ignore
+  await settle();
+  await settle();
+  assert.equal(selected(), "Bench club");
 });

@@ -29,16 +29,16 @@ const {
   resolveFeatures,
 } = require("../feature-flags");
 
-// The flags this build knows. None today; the gallery's was retired when it
-// shipped, so a `gallery` left in a settings file or typed on the command
-// line is ignored.
-test("no flag is known, and the retired gallery flag is ignored", () => {
+// The flags this build knows. None today: the gallery's and the private
+// stores' were retired when each shipped, so a `gallery` or `stores` left in a
+// settings file or typed on the command line is ignored.
+test("no flag is known, and the retired gallery and stores flags are ignored", () => {
   assert.deepEqual([...FEATURES], []);
   assert.deepEqual(
     resolveFeatures({
-      argv: ["--features=demo"],
-      env: { CHIPHIPPO_FEATURES: "demo" },
-      stored: ["demo"],
+      argv: ["--features=gallery,stores,demo"],
+      env: { CHIPHIPPO_FEATURES: "stores" },
+      stored: ["gallery", "stores"],
     }),
     [],
   );

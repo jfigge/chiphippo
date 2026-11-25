@@ -982,6 +982,30 @@ export class SettingsDialog {
       window.chiphippo,
     );
 
+    // Settings ▸ Gallery — kept, so the dialog's close can stop what its
+    // private stores' guide still has going (a GitHub sign-in waiting).
+    const galleryPanel = buildGalleryPanel(
+      SettingsDialog.#settings,
+      SettingsDialog.#emit,
+      {
+        rowWithNote,
+        web: isWeb(),
+        shareStatus: window.chiphippo?.gallery?.shareStatus,
+        // The list as stored now, for a check that outlives the card.
+        storedShares: window.chiphippo?.settings?.get
+          ? async () => keptShares(await window.chiphippo.settings.get())
+          : null,
+        // The private stores (never on the web).
+        stores:
+          !isWeb() && window.chiphippo?.stores
+            ? {
+                bridge: window.chiphippo,
+                onBrowse: (store) =>
+                  void window.chiphippo.gallery?.show?.(`stores:${store.id}`),
+              }
+            : null,
+      },
+    );
     const panels = {
       appearance: el(
         "section",
@@ -1113,15 +1137,7 @@ export class SettingsDialog {
           "data-panel": "gallery",
           hidden: true,
         },
-        buildGalleryPanel(SettingsDialog.#settings, SettingsDialog.#emit, {
-          rowWithNote,
-          web: isWeb(),
-          shareStatus: window.chiphippo?.gallery?.shareStatus,
-          // The list as stored now, for a check that outlives the card.
-          storedShares: window.chiphippo?.settings?.get
-            ? async () => keptShares(await window.chiphippo.settings.get())
-            : null,
-        }).rows,
+        galleryPanel.rows,
       ),
       integration: el(
         "section",
@@ -1163,6 +1179,8 @@ export class SettingsDialog {
         class: "settings-nav-item",
         type: "button",
         role: "tab",
+        id: `settings-nav-${key}`,
+        "aria-controls": `settings-panel-${key}`,
         "aria-selected": "false",
         "data-panel": key,
         text: label,
@@ -1185,6 +1203,9 @@ export class SettingsDialog {
       }
       for (const [panelKey, panel] of Object.entries(panels)) {
         panel.hidden = panelKey !== key;
+        // Each panel named for its tab, and found by it (aria-controls).
+        panel.id = `settings-panel-${panelKey}`;
+        panel.setAttribute("aria-labelledby", `settings-nav-${panelKey}`);
       }
     };
     // Apply the starting panel through the same one path a click takes, so the
@@ -1228,6 +1249,7 @@ export class SettingsDialog {
         // status line writing into a card that has been thrown away is a leak
         // that grows by one set every time Settings is opened.
         about.dispose();
+        galleryPanel.destroy?.();
         window.removeEventListener("chiphippo:locale-changed", onLocaleChanged);
         SettingsDialog.#open = false;
       },

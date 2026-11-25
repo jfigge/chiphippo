@@ -81,8 +81,9 @@ export class ProjectTabs {
    *   Desktop… (the snapshot).
    * @param {(id: string, format: string) => void} callbacks.onExportTo -
    *   Export ▸ one of another tool's formats (Feature 390).
-   * @param {((id: string) => void)|null} [callbacks.onShare] - Share to
-   *   Gallery…; absent, the menu has no such row.
+   * @param {((id: string) => void)|null} [callbacks.onShare] - Share To…
+   *   (Public: the gallery; Private: a store); absent, the menu has no such
+   *   row.
    * @param {(id: string) => void} callbacks.onDelete - Delete on a tab.
    */
   constructor(
@@ -260,6 +261,9 @@ export class ProjectTabs {
         canDuplicate: this.#tabs.length > 0 && !this.#locked,
       },
       isMac: IS_MAC,
+      // (Save to Private Store… is offered only when it was handed a
+      // callback — never on the web build: an action with no handler is
+      // left out.)
     });
   }
 }

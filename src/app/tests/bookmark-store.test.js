@@ -369,3 +369,17 @@ test("prune keeps the named paths and forgets the rest, holds untouched", () => 
   store.releaseAll();
   assert.equal(app.calls.stopped, 1);
 });
+
+test("a store folder's bookmark is KEPT while the folder can't be read (an unmounted sync folder)", () => {
+  const app = fakeApp();
+  const dir = tmpDir();
+  const store = masStore(dir, app);
+  const away = path.join(dir, "GoogleDrive", "Bench club");
+  store.captureSave({ filePath: away, bookmark: "drive-blob" });
+  assert.equal(
+    store.withAccess(away, () => "ran", { keep: true }),
+    "ran",
+  );
+  assert.equal(app.calls.stopped, 1, "released");
+  assert.equal(store.has(away), true, "kept for when the folder is back");
+});

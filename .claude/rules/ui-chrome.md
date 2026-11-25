@@ -449,7 +449,7 @@ re-dispatches as `chiphippo:*`; `app.js` hands the project/desktop ones straight
   two can't drift.
 - **DESKTOP** is the structure inside it — New Desktop · Duplicate Desktop · rule ·
   Import Desktop… · Export ▸ (Chip Hippo Desktop… · rule · KiCad Project… · Digital
-  Circuit…) · rule · Share to Gallery… · rule · Desktop Properties… · rule · Delete
+  Circuit…) · rule · Share To… (a Public | Private switch — stores.md) · rule · Desktop Properties… · rule · Delete
   Desktop, every one aimed at the ACTIVE desktop (a tab's menu aims the same list at that
   tab). The GATED items (`GATED_ACTION_IDS`: Duplicate and Share — `canDuplicate`, off
   while running — and Delete — `canDelete`, off on the last desktop) carry menu-item ids

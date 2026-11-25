@@ -28,6 +28,12 @@
 //   node scripts/asc-release.mjs status
 //   node scripts/asc-release.mjs prepare --version 1.0.1 --build 1.0.2 --notes-file notes.txt
 //   node scripts/asc-release.mjs submit  --version 1.0.1
+//   node scripts/asc-release.mjs cancel  --version 1.0.1
+//
+// `cancel` withdraws a version's open review submission, so its record is
+// editable again — the way to replace a version waiting for review with a
+// newer build: cancel, `prepare --version <new>` (which renames the record
+// and attaches the build), `submit`.
 //
 // Auth is an App Store Connect API key, taken from the environment:
 //   APPLE_API_KEY_ID      the key's 10-character id
@@ -393,6 +399,60 @@ async function cmdSubmit(opts) {
   );
 }
 
+async function cmdCancel(opts) {
+  const target = opts.version ?? fail("--version is required");
+  const app = await appId();
+  const record = (await versions(app)).find((v) => v.version === target);
+  if (!record) fail(`No version record ${target}`);
+  if (EDITABLE.has(record.state)) {
+    console.log(`${target} is already editable (${record.state})`);
+    return;
+  }
+  const open = await get(
+    `/v1/reviewSubmissions?filter[app]=${app}&filter[state]=READY_FOR_REVIEW,WAITING_FOR_REVIEW,IN_REVIEW,UNRESOLVED_ISSUES&include=items&limit=10`,
+  );
+  // The submission whose item is THIS version — never another one's.
+  let submission = null;
+  for (const sub of open.data ?? []) {
+    const items = await get(
+      `/v1/reviewSubmissions/${sub.id}/items?include=appStoreVersion`,
+    );
+    if (
+      items.data.some(
+        (i) => i.relationships?.appStoreVersion?.data?.id === record.id,
+      )
+    ) {
+      submission = sub;
+      break;
+    }
+  }
+  if (!submission)
+    fail(`${target} (${record.state}) has no open review submission`);
+  await patch(`/v1/reviewSubmissions/${submission.id}`, {
+    data: {
+      type: "reviewSubmissions",
+      id: submission.id,
+      attributes: { canceled: true },
+    },
+  });
+  console.log(
+    `cancelling submission ${submission.id} (${submission.attributes.state})…`,
+  );
+  // Apple settles a cancellation in its own time; wait for the record to
+  // come back editable, so a `prepare` straight after it is not refused.
+  for (let i = 0; i < 40; i += 1) {
+    const now = (await versions(app)).find((v) => v.id === record.id);
+    if (EDITABLE.has(now?.state)) {
+      console.log(`${target} is editable again (${now.state})`);
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 15_000));
+  }
+  fail(
+    `the cancellation was sent, but ${target} is not editable yet — check status later`,
+  );
+}
+
 // ── entry ────────────────────────────────────────────────────────────────────
 
 function parseArgs(argv) {
@@ -416,7 +476,8 @@ try {
   if (cmd === "status") await cmdStatus();
   else if (cmd === "prepare") await cmdPrepare(opts);
   else if (cmd === "submit") await cmdSubmit(opts);
-  else fail("Usage: asc-release.mjs <status|prepare|submit> [options]");
+  else if (cmd === "cancel") await cmdCancel(opts);
+  else fail("Usage: asc-release.mjs <status|prepare|submit|cancel> [options]");
 } catch (e) {
   fail(e.message);
 }

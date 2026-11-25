@@ -111,7 +111,7 @@
 <main class="page">
   <p class="page-tag">Legal</p>
   <h1>Privacy Statement</h1>
-  <p class="updated">Last updated: November 10, 2026</p>
+  <p class="updated">Last updated: November 22, 2026</p>
 
   <div class="tldr" role="note">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -121,7 +121,9 @@
       <strong>The short version:</strong> Chip Hippo has no accounts, no telemetry, and
       no third-party tracking. Everything you build — boards, chips, wires, and whole
       designs — stays on your own device as plain files, unless you choose to share a
-      design to the gallery. The app makes no network connection at all unless you switch
+      design to the gallery or keep it in a private store on a service you already use
+      (a synced folder, or your own private GitHub repository) — and a private store
+      never comes to us. The app makes no network connection at all unless you switch
       one on, and the ones you can switch on are listed below. This website sets no
       cookies and runs no analytics.
     </p>
@@ -142,8 +144,10 @@
     in local files under your operating system's user-profile folder (and wherever you
     choose to save documents). None of it is uploaded to us or to any cloud service —
     there is no Chip Hippo account and no server that holds your work. The one exception
-    is a design you send to the gallery yourself, described below. You can back up, move,
-    or delete your files yourself at any time.
+    is a design you send to the gallery yourself, described below. A design you save to a
+    <a href="#private-stores">private store</a> goes where <em>you</em> keep that store —
+    a folder your own sync service looks after, or your own GitHub repository — and never
+    to us. You can back up, move, or delete your files yourself at any time.
   </p>
 
   <h3>Fully offline by default</h3>
@@ -158,9 +162,10 @@
   <h3>Optional connections you can turn on</h3>
   <p>
     These are the only features that reach the network, and none of them is on until you
-    turn it on or press the button that starts it. The first three talk to third parties
-    directly, not to us. The gallery's two reach chiphippo.com and the service that
-    receives shared designs.
+    turn it on or press the button that starts it. The first three, and a GitHub private
+    store, talk to third parties directly, not to us. The gallery's two reach
+    chiphippo.com and the service that receives shared designs. A private store in a
+    folder makes no network connection at all.
   </p>
   <ul>
     <li>
@@ -206,7 +211,7 @@
     </li>
     <li>
       <strong>Sharing a design to the gallery (only when you press Share
-      Publicly).</strong> Desktop ▸ <em>Share to Gallery…</em>, in the app or in Chip
+      Publicly).</strong> Desktop ▸ <em>Share To…</em> (its Public tab), in the app or in Chip
       Hippo on this website, sends one desktop for review.
       Before anything is sent, the app shows what will be published and what is sent:
       <ul>
@@ -241,6 +246,48 @@
           don't reach GitHub, and stores nothing.</li>
       </ul>
       Settings ▸ Gallery ▸ <em>Share consent</em> can switch sharing off altogether.
+    </li>
+    <li id="private-stores">
+      <strong>Private stores (only once you add one).</strong> Settings ▸ Gallery ▸
+      Private ▸ <em>Add Store…</em> keeps designs that only you and the people you choose
+      can see, on a service you already use. Chip Hippo runs no server for it: nothing in
+      a private store is ever sent to us, and we cannot see it.
+      <ul>
+        <li><strong>A store in a folder</strong> (one that Google Drive, Dropbox,
+          OneDrive, iCloud Drive or another service keeps in step) is read and written
+          by Chip Hippo as ordinary files on your disk. Chip Hippo makes no network
+          connection for it; your sync service moves the files, and its own privacy
+          policy and sharing settings apply.</li>
+        <li><strong>A store on GitHub</strong> lives in a private GitHub repository —
+          one on your account, or a friend's you were invited to. Chip Hippo talks to
+          <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" rel="noopener noreferrer">GitHub</a>
+          directly from your computer: to sign you in (you approve Chip Hippo on
+          GitHub's own page, so Chip Hippo never sees your password), to make the
+          repository, to invite the GitHub usernames you type and accept an
+          invitation for you, and to read and save designs. GitHub's sign-in asks for
+          access to your private repositories, because that is the only access GitHub
+          offers that reaches one. Chip Hippo reads and writes designs only in the
+          store's own repository or folder, and refuses to use one that is public.
+          Beside that it asks GitHub only for your username, for your pending
+          invitations (to accept the one for a store you are joining), and — when you
+          choose to put a store in a repository you already have — for the names of
+          your private repositories, to offer them. The sign-in is
+          stored on your device, encrypted with your operating system's credential
+          store, and is sent only to GitHub. <em>Sign out</em> removes it; GitHub's
+          Settings ▸ Applications revokes it on GitHub's side.</li>
+        <li><strong>What a store holds:</strong> each design you save to it — its
+          boards, parts, wiring, notes, ROM contents and custom chips — a picture of
+          its board, its title, description and tags, the name you give, an optional
+          note, the date, and the version of Chip Hippo that saved it. Everyone the store is shared with can see all of it.</li>
+        <li><strong>The share link</strong> names the store and where it lives (a
+          GitHub repository, or which sync service holds the folder) and carries no
+          password. Its details sit after the <code>#</code> of the address, so opening
+          it in a browser sends them to no server, ours included.</li>
+        <li><strong>Who can see it</strong> is decided by the service: the people you
+          shared the folder with, or the GitHub accounts invited to the repository.
+          You remove someone's access there, and delete a store there too.
+          <em>Remove</em> in Chip Hippo only takes it off your own list.</li>
+      </ul>
     </li>
   </ul>
 
@@ -282,6 +329,14 @@
     in your own mail program; nothing is sent unless you send that email.
   </p>
 
+  <h3>Private store links</h3>
+  <p>
+    A private store's link opens a page at chiphippo.com/store/ that offers to open the
+    store in Chip Hippo. The store's details are in the part of the address after the
+    <code>#</code>, which your browser never sends to a server; the page reads them in
+    your browser only, to show the store's name, and makes no request of its own.
+  </p>
+
   <h3>Content loaded from GitHub</h3>
   <p>
     The download buttons point to GitHub Releases, and the downloads section reads the
@@ -301,13 +356,16 @@
     <li>We don't run ads or embed third-party trackers, in the app or on this site.</li>
     <li>We don't require or create user accounts.</li>
     <li>We don't collect, receive, or store your circuit designs, except one you send to
-      the gallery yourself.</li>
+      the gallery yourself. Designs in a private store stay on the service you chose, and
+      never reach us.</li>
   </ul>
   <p>
-    Only two things <em>can</em> send a design off your machine, and each only when you
+    Only three things <em>can</em> send a design off your machine, and each only when you
     ask: the AI assistant's review, described above, which goes to the provider you
-    configured on a key you supplied and never comes to us; and <em>Share to
-    Gallery…</em>, which comes to us for review and, once approved, is published.
+    configured on a key you supplied and never comes to us; saving to a private store,
+    which goes to your own sync service or GitHub account and never comes to us; and
+    sharing to the gallery (<em>Share To…</em> ▸ Public), which comes to us for review and, once approved, is
+    published.
   </p>
 
   <h2>4. Your data and your rights</h2>
@@ -315,7 +373,9 @@
     The information the app stores lives on your own device and is fully under your
     control — you can view, edit, back up, or erase it at any time. The only personal data
     we ever hold is what you put in a design you share to the gallery: the name you give,
-    and anything you wrote in its title, description or design. To have a shared design
+    and anything you wrote in its title, description or design. A private store is not
+    ours to hold or remove: it is in your own folder or GitHub account, where you (or
+    the store's owner) can delete it. To have a shared design
     taken down from the gallery, or a pending one withdrawn, email
     <a href="mailto:hippoherd@gmail.com">hippoherd@gmail.com</a> with its title (and the
     gallery link, if it was published), and we will remove it. The same address, or a

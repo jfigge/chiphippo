@@ -222,17 +222,18 @@ it out in the clear.
 
 ## Gallery
 
-The **Gallery** tab holds the two answers the [gallery](gallery.md) needs, and
-the list of designs you've shared.
+The **Gallery** tab has two tabs of its own: **Public**, for the
+[gallery](gallery.md), and **Private**, for your
+[private stores](private-stores.md).
+
+**Public** holds the gallery's two answers, and the designs you've shared:
 
 - **Gallery access** — **Yes** or **No**: whether Chip Hippo may read the
   gallery at chiphippo.com — its list of designs, their pictures, and a design
-  when you open one. Nothing of yours is sent. It's asked the first time you
-  open the **Gallery** tab of **File ▸ Browse Projects…**, so you'll rarely need
-  to set it here. Chip
-  Hippo in the browser is already on the gallery's website, so it has no such
-  row.
-- **Share consent** — **Ask**, **Yes** or **No**: what **Share to Gallery…**
+  when you open one. Nothing of yours is sent. Until it is **Yes**, **File ▸
+  Browse Projects…** has no **Gallery** tab. Chip Hippo in the browser is
+  already on the gallery's website, so it has no such row.
+- **Share consent** — **Ask**, **Yes** or **No**: what **Share To… ▸ Public**
   does before it sends a design. **Ask**, the default, shows everything that
   will be sent and published; **Yes** says it in one line; **No** switches
   sharing off.
@@ -241,6 +242,11 @@ the list of designs you've shared.
   accepted, with the reviewer's note if there is one. A share's **×** takes it
   off the list (only the list). See
   [The Gallery](gallery.md#seeing-what-became-of-a-share).
+
+**Private** lists your private stores, each with **Copy link**, **Invite**
+(GitHub), **Browse**, **Show folder** or **Open on GitHub**, and **Remove**.
+**Add Store…** walks you through making or joining one, and **Sign out**
+removes your GitHub sign-in. See [Private Stores](private-stores.md).
 
 ## About
 

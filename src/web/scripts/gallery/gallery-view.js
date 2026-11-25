@@ -35,6 +35,8 @@
 //     Review Guideline 1.2 asks of any app showing what its users made.
 //     An action with `copy` puts that text on the clipboard and says so on
 //     the button (both homes' Copy link — entry-format.js `entryPageUrl`);
+//   · `detail(entry)` — more for the detail pane, under its actions (the
+//     app's private stores draw an entry's revisions there), or null;
 //   · `onShow(entry | null)` — told when the detail opens and closes (the
 //     site keeps its address's `#<id>` in step, so the bar is the link too);
 //     `open(id)` opens one from outside (the site's `#<id>` on arrival).
@@ -103,6 +105,7 @@ export class GalleryView {
   #source;
   #say;
   #actions;
+  #detailExtra;
   #onShow;
   /** Each copy button's pending "back to its own label". */
   #copied = new WeakMap();
@@ -125,14 +128,24 @@ export class GalleryView {
    *                   onClick?: (entry: object) => void,
    *                   copy?: (entry: object) => string,
    *                   quiet?: boolean}>,
+   *   detail?: (entry: object) => Node|null,
    *   onShow?: (entry: object|null) => void}} opts
    */
-  constructor({ root, source, say, actions = [], onShow = null }) {
+  constructor({
+    root,
+    source,
+    say,
+    actions = [],
+    detail = null,
+    onShow = null,
+  }) {
+    // prettier-ignore
     this.#root = root;
     this.#doc = root.ownerDocument;
     this.#source = source;
     this.#say = say;
     this.#actions = actions;
+    this.#detailExtra = detail;
     this.#onShow = onShow;
     this.#build();
   }
@@ -361,6 +374,7 @@ export class GalleryView {
       facts,
       el(d, "p", "gallery-detail-description"),
       actions,
+      ...[this.#detailExtra?.(entry)].filter(Boolean),
     );
     this.#detail.dataset.id = entry.id;
     this.#detail.hidden = false;

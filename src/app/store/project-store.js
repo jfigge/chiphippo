@@ -73,6 +73,9 @@ const {
 } = require("./project-migrate");
 const { collectImages, imagesOf, hydrateImages } = require("./project-images");
 const { sanitizeCustomChips } = require("./custom-chips");
+const {
+  normalizeStoreFrom,
+} = require("../../web/scripts/stores/store-format.js");
 
 /**
  * Schema version of a project file. v4 was the single-file redesign: every
@@ -420,6 +423,7 @@ class ProjectStore {
         id: tab.id,
         name: tab.name,
         ...(tab.description ? { description: tab.description } : {}),
+        ...(tab.storeFrom ? { storeFrom: tab.storeFrom } : {}),
         doc: tab.doc,
       })),
       // `images` is non-empty exactly when `blobs` is, so one guard covers the
@@ -534,12 +538,16 @@ class ProjectStore {
       const doc = tab.doc;
       if (!doc || typeof doc !== "object" || Array.isArray(doc)) continue;
       ids.add(id);
+      // The private store revision the desktop is linked to (Save to
+      // Store… — stores/store-format.js), omitted when there is none.
+      const storeFrom = normalizeStoreFrom(tab.storeFrom);
       tabs.push({
         id,
         name: text(tab.name) || id,
         ...(text(tab.description)
           ? { description: text(tab.description) }
           : {}),
+        ...(storeFrom ? { storeFrom } : {}),
         doc: fromDisk ? migrateDeskDocument(doc) : doc,
       });
     }

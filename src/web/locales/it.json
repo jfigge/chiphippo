@@ -56,7 +56,7 @@
       "exportDigital": "Circuito Digital…",
       "properties": "Proprietà della scrivania…",
       "delete": "Elimina la scrivania",
-      "share": "Condividi nella galleria…"
+      "share": "Condividi…"
     },
     "edit": {
       "title": "Modifica",
@@ -120,6 +120,14 @@
     },
     "exportDigital": {
       "title": "Esporta in Digital"
+    },
+    "storeCreate": {
+      "title": "Dove va messa la cartella dell'archivio?",
+      "button": "Crea l'archivio qui"
+    },
+    "storeJoin": {
+      "title": "Scegli la cartella condivisa",
+      "button": "Usa questa cartella"
     }
   },
   "toolbar": {
@@ -393,7 +401,7 @@
     },
     "gallery": {
       "access": "Accesso alla galleria",
-      "accessHint": "Se Chip Hippo può leggere la galleria su chiphippo.com/gallery: l'elenco dei progetti, le loro immagini e un progetto quando lo apri. Non viene inviato nulla di tuo. Viene chiesto la prima volta che sfogli la galleria.",
+      "accessHint": "Se Chip Hippo può leggere la galleria su chiphippo.com/gallery: l'elenco dei progetti, le loro immagini e un progetto quando lo apri. Non viene inviato nulla di tuo. File ▸ Sfoglia progetti mostra la scheda Galleria solo finché questa opzione è su Sì.",
       "share": "Consenso alla condivisione",
       "shareHint": "Se la condivisione di un progetto nella galleria mostra cosa verrà pubblicato e chiede prima (Chiedi), lo mostra in una riga (Sì) o è disattivata (No).",
       "shares": "Le tue condivisioni",
@@ -414,7 +422,12 @@
       "remove": "Rimuovi «{title}» da questo elenco",
       "yes": "Sì",
       "no": "No",
-      "ask": "Chiedi"
+      "ask": "Chiedi",
+      "tab": {
+        "public": "Pubblica",
+        "private": "Privata"
+      },
+      "tabsLabel": "Galleria"
     }
   },
   "palette": {
@@ -2994,6 +3007,10 @@
         "refused": "La condivisione non è disponibile qui.",
         "unavailable": "Impossibile raggiungere la galleria. Controlla la connessione e riprova."
       }
+    },
+    "shareTo": {
+      "title": "Condividi",
+      "where": "Condividi in"
     }
   },
   "browse": {
@@ -3013,11 +3030,242 @@
         "other": "{count} desktop"
       },
       "remove": "Rimuovi {name} dai progetti recenti"
-    },
-    "access": {
-      "title": "L’accesso alla galleria è disattivato",
-      "message": "La galleria è una raccolta di circuiti su chiphippo.com. Chip Hippo chiede prima di leggere qualcosa da lì.",
-      "allow": "Consenti…"
     }
+  },
+  "stores": {
+    "title": "Archivi privati",
+    "hint": "Conserva progetti che possono vedere solo tu e gli amici che scegli, e lavoraci insieme. Un archivio sta in una cartella che sincronizzi (Google Drive, Dropbox, OneDrive, iCloud Drive) o in un repository GitHub privato: Chip Hippo non usa nessun server per questo.",
+    "add": "Aggiungi archivio…",
+    "empty": "Ancora nessun archivio privato.",
+    "copyLink": "Copia link",
+    "copied": "Copiato",
+    "linkLabel": "Il link dell'archivio",
+    "linkHintFolder": "Invia questo link a un amico. Gli serve anche la cartella stessa: condividila prima con lui in {app}.",
+    "linkHintGitHub": "Invia questo link a un amico. Invita prima il suo account GitHub, così l'archivio lo lascia entrare.",
+    "invite": "Invita",
+    "peopleOnGitHub": "Gestisci chi ha accesso su GitHub",
+    "browseStore": "Sfoglia",
+    "showFolder": "Mostra cartella",
+    "showRepo": "Apri su GitHub",
+    "remove": "Rimuovi",
+    "removeAsk": "Rimuovere «{name}» da questo computer? Non viene eliminato nulla: l'archivio e i suoi progetti restano dove sono, per te e per tutti quelli con cui è condiviso, e puoi aggiungerlo di nuovo dal suo link.",
+    "removeConfirm": "Rimuovi da questo computer",
+    "signOut": "Esci",
+    "back": "Indietro",
+    "done": "Fine",
+    "whereFolder": "{app} · {path}",
+    "whereGitHub": "GitHub · {repo}",
+    "repoDescription": "Progetti Chip Hippo condivisi",
+    "error": {
+      "missing": "Non è stato possibile trovare l'archivio. La sua cartella potrebbe essere stata spostata, oppure non ha ancora finito di sincronizzarsi su questo computer.",
+      "noAccess": "Questo archivio non è condiviso con te (oppure non esiste più).",
+      "signedOut": "Accedi di nuovo a GitHub per raggiungere questo archivio.",
+      "rateLimited": "GitHub ha chiesto a Chip Hippo di rallentare. Attendi qualche minuto e riprova.",
+      "wrongStore": "Quella cartella contiene un archivio diverso da quello indicato dal link.",
+      "ambiguous": "Quella cartella contiene più di un archivio. Scegli la cartella dell'archivio stesso.",
+      "notStore": "In quel repository non c'è nessun archivio Chip Hippo.",
+      "behind": "Qualcuno ha salvato prima una versione più recente.",
+      "newer": "Questo archivio è stato creato da una versione più recente di Chip Hippo. Aggiorna Chip Hippo per salvarci.",
+      "full": "Questo computer ha già tutti gli archivi che può tenere. Rimuovine prima uno.",
+      "denied": "Chip Hippo non è autorizzato a scrivere in quella cartella.",
+      "tooBig": "Questo progetto è troppo grande per un archivio.",
+      "romTooBig": "Il contenuto delle ROM di questo progetto è troppo grande per un archivio.",
+      "invalid": "Così com'è non si può salvare. Controlla il titolo e il tuo nome.",
+      "noUser": "Su GitHub non c'è nessun account con quel nome.",
+      "nameTaken": "Il tuo account GitHub ha già dei repository con quel nome. Prova un altro nome.",
+      "notPrivate": "GitHub ha reso pubblico il repository, quindi Chip Hippo non l'ha usato. Controlla le impostazioni del tuo account GitHub.",
+      "notConfigured": "Gli archivi GitHub non sono ancora disponibili in questa versione di Chip Hippo.",
+      "noKeychain": "Questo computer non ha un posto sicuro dove conservare l'accesso a GitHub, quindi Chip Hippo non può restare connesso.",
+      "notInvited": "Questo archivio non è ancora stato condiviso con il tuo account GitHub.",
+      "notSynced": "Quella cartella non contiene questo archivio. Se è stato condiviso con te da poco, potrebbe essere ancora in sincronizzazione: attendi un minuto e riprova.",
+      "signInDenied": "L'accesso a GitHub non è stato completato. Riprova.",
+      "cancelled": "L'accesso è stato annullato.",
+      "unavailable": "Non ha funzionato. Controlla la connessione e riprova.",
+      "badFolder": "Scrivi un nome di cartella per l'archivio, per esempio chiphippo. Usa lettere, numeri, punti, trattini e trattini bassi, con / tra le cartelle.",
+      "badLink": "Questo non è un link completo a un archivio di Chip Hippo. Copia l'intero link dal messaggio e riprova.",
+      "badLogin": "Questo non è un nome utente GitHub. I nomi utente usano lettere, numeri e trattini.",
+      "pickPublic": "Quel repository è pubblico: un archivio al suo interno pubblicherebbe ogni progetto. Scegline uno privato.",
+      "storePublic": "Il repository di questo archivio è pubblico, quindi chiunque potrebbe vedere ciò che vi si salva. Deve essere privato perché Chip Hippo lo usi: chiedi al proprietario di renderlo privato.",
+      "noPush": "Il tuo account GitHub può solo leggere quel repository, quindi non vi si possono salvare progetti.",
+      "moved": "Il repository di questo archivio è stato rinominato o spostato su GitHub. Chiedi al proprietario un nuovo link.",
+      "tooLarge": "Quel repository è troppo grande perché GitHub lo elenchi in una volta. Metti l'archivio in una cartella a parte.",
+      "alreadyAdded": "Questo computer ha già quell'archivio, conservato altrove. Per aggiungerlo da qui, rimuovi prima quello nell'elenco."
+    },
+    "setup": {
+      "linkCardTitle": "Aggiungi un archivio privato",
+      "startTitle": "Aggiungi un archivio privato",
+      "startIntro": "Un archivio privato conserva progetti che possono vedere solo tu e gli amici con cui lo condividi. Tutti possono aprirli, modificarli e salvarne nuove versioni. Sta su un servizio che usi già. Scegline uno:",
+      "choice": {
+        "folder": {
+          "title": "Una cartella che sincronizzi",
+          "text": "Google Drive, Dropbox, OneDrive, iCloud Drive o qualsiasi cartella condivisa. Non serve accedere."
+        },
+        "github": {
+          "title": "GitHub",
+          "text": "Un repository privato gratuito: uno nuovo creato da Chip Hippo per te, o uno che hai già. Invita gli amici con il loro nome GitHub."
+        },
+        "link": {
+          "title": "Ho un link da un amico",
+          "text": "Unisciti a un archivio che qualcuno ha condiviso con te."
+        },
+        "local": {
+          "title": "Una cartella di archivio già presente su questo computer",
+          "text": "Ripristina la posizione locale di un archivio esistente."
+        }
+      },
+      "nameLabel": "Nome dell'archivio",
+      "namePlaceholder": "per es. Club del laboratorio",
+      "browse": "Mostra i suoi progetti",
+      "provider": {
+        "gdrive": "Google Drive",
+        "dropbox": "Dropbox",
+        "onedrive": "OneDrive",
+        "icloud": "iCloud Drive",
+        "other": "Un'altra cartella sincronizzata"
+      },
+      "folder": {
+        "title": "Crea un archivio in una cartella sincronizzata",
+        "intro": "Chip Hippo crea una cartella per l'archivio dentro la cartella che il tuo servizio cloud tiene allineata tra i computer. È il servizio a condividerla con i tuoi amici; Chip Hippo si limita a leggere e scrivere i progetti al suo interno.",
+        "provider": "Quale servizio?",
+        "noApp": "Non hai ancora la sua app su questo computer?",
+        "getApp": "Scarica {app}",
+        "where": {
+          "gdrive": "Installa Google Drive for desktop ed esegui l'accesso. Poi, quando Chip Hippo chiede dove, scegli «Il mio Drive» (o una cartella al suo interno).",
+          "dropbox": "Installa l'app Dropbox ed esegui l'accesso. Poi, quando Chip Hippo chiede dove, scegli la tua cartella Dropbox (o una cartella al suo interno).",
+          "onedrive": "Installa OneDrive ed esegui l'accesso. Poi, quando Chip Hippo chiede dove, scegli la tua cartella OneDrive (o una cartella al suo interno).",
+          "icloud": "Attiva iCloud Drive su questo Mac. Poi, quando Chip Hippo chiede dove, scegli iCloud Drive (o una cartella al suo interno). Anche i tuoi amici devono avere iCloud Drive.",
+          "other": "Va bene qualsiasi cartella che resti allineata con i computer dei tuoi amici: Syncthing, un'unità di rete condivisa o un altro servizio di sincronizzazione."
+        },
+        "choose": "Scegli dove…",
+        "madeTitle": "«{name}» è pronto",
+        "madeWhere": "La sua cartella è {path}.",
+        "share": {
+          "gdrive": "In Google Drive, condividi la nuova cartella con i tuoi amici (clic destro sulla cartella ▸ Condividi) e dai loro l'accesso come Editor.",
+          "dropbox": "In Dropbox, condividi la nuova cartella con i tuoi amici e consenti loro di modificarla.",
+          "onedrive": "In OneDrive, condividi la nuova cartella con i tuoi amici e consenti loro di modificarla.",
+          "icloud": "Nel Finder, condividi la nuova cartella con i tuoi amici (clic destro sulla cartella ▸ Condividi) e consenti loro di apportare modifiche.",
+          "other": "Assicurati che la nuova cartella arrivi sui computer dei tuoi amici e che possano scriverci."
+        },
+        "howToShare": "Come condividere una cartella",
+        "sendLink": "Invia questo link ai tuoi amici. Quando lo aprono, Chip Hippo li guida passo passo nell'aggiunta dell'archivio.",
+        "friendSees": "Il link dice quale archivio è e dove si trova: nessuna password e niente di privato. Solo le persone con cui hai condiviso la cartella possono aprire i progetti."
+      },
+      "github": {
+        "title": "Crea un archivio su GitHub",
+        "intro": "Chip Hippo crea un repository privato sul tuo account GitHub per conservare i progetti e invita gli amici che indichi. GitHub è gratuito; anche i tuoi amici devono avere un account gratuito.",
+        "signInWhy": "Per prima cosa, accedi a GitHub. Digiti un breve codice sulla pagina di GitHub stessa: Chip Hippo non vede mai la tua password.",
+        "noAccount": "Non hai un account GitHub?",
+        "signUp": "Creane uno gratis",
+        "signIn": "Accedi a GitHub",
+        "typeCode": "Digita questo codice sulla pagina di GitHub, poi approva Chip Hippo:",
+        "copyAndOpen": "Copia il codice e apri GitHub",
+        "waiting": "In attesa di GitHub… Torna qui dopo averlo approvato.",
+        "signedIn": "Accesso a GitHub eseguito.",
+        "signedInAs": "Accesso a GitHub eseguito come @{login}.",
+        "private": "Il repository è privato: solo tu e le persone che inviti potete vederlo. Chip Hippo chiede a GitHub l'accesso ai tuoi repository privati, l'unico modo che ha per raggiungere questo.",
+        "make": "Crea l'archivio",
+        "making": "Creazione in corso…",
+        "madeWhere": "Si trova nel repository privato {repo}.",
+        "sendLink": "Poi invia loro questo link. Quando lo aprono, Chip Hippo li fa accedere e accetta l'invito al posto loro.",
+        "friendSees": "Il link dice quale archivio è: nessuna password e niente di privato. Solo gli account che hai invitato possono aprire i progetti.",
+        "where": "Dove mettere l'archivio?",
+        "whereNew": "In un nuovo repository privato",
+        "whereExisting": "In una cartella di uno dei miei repository",
+        "repo": "Repository",
+        "repoLoading": "Caricamento dei tuoi repository…",
+        "repoNone": "Non è stato trovato nessun repository privato in cui puoi scrivere. I repository pubblici non sono proposti: un archivio in uno di essi pubblicherebbe ogni progetto.",
+        "privateOnly": "Sono elencati solo i repository privati in cui puoi scrivere: un archivio in uno pubblico pubblicherebbe ogni progetto.",
+        "folder": "Cartella nel repository",
+        "folderHint": "I file dell'archivio vanno in questa cartella, separati da tutto il resto del repository. Se la cartella contiene già un archivio di Chip Hippo, viene aggiunto quello.",
+        "repoRetry": "Riprova"
+      },
+      "invite": {
+        "intro": "Invita gli amici con il loro nome utente GitHub:",
+        "label": "Il nome utente GitHub di un amico",
+        "placeholder": "nome-utente",
+        "invite": "Invita",
+        "pending": "invitato: in attesa che accetti"
+      },
+      "link": {
+        "title": "Unisciti all'archivio di un amico",
+        "intro": "Incolla il link che ti ha inviato il tuo amico:",
+        "label": "Il link dell'archivio",
+        "placeholder": "https://chiphippo.com/store/#…",
+        "next": "Avanti",
+        "bad": "Questo non è il link di un archivio Chip Hippo. Copia l'intero link dal messaggio del tuo amico e riprova."
+      },
+      "join": {
+        "title": "Unisciti a «{name}»",
+        "folderIntro": "Questo archivio è una cartella che il tuo amico ha condiviso con te in {app}. Tre passaggi:",
+        "accept": {
+          "gdrive": "Apri l'email di Google Drive e apri la cartella condivisa.",
+          "dropbox": "Apri l'email di Dropbox e aggiungi la cartella condivisa al tuo Dropbox.",
+          "onedrive": "Apri l'email di OneDrive e apri la cartella condivisa.",
+          "icloud": "Apri l'invito di iCloud Drive che ti ha inviato il tuo amico e accettalo.",
+          "other": "Assicurati che la cartella del tuo amico sia arrivata su questo computer."
+        },
+        "sync": {
+          "gdrive": "In Google Drive, aggiungila al tuo Drive: clic destro sulla cartella ▸ Organizza ▸ Aggiungi scorciatoia, poi scegli Il mio Drive. Su questo computer deve essere installato Google Drive for desktop.",
+          "dropbox": "Verifica che l'app Dropbox su questo computer l'abbia sincronizzata.",
+          "onedrive": "In OneDrive, scegli «Aggiungi collegamento a I miei file» sulla cartella, così si sincronizza su questo computer.",
+          "icloud": "Compare in iCloud Drive su questo Mac, con il nome che le ha dato il tuo amico.",
+          "other": "Dovrebbe trovarsi in una cartella di questo computer che resta allineata con quella del tuo amico."
+        },
+        "pick": "Scegli quella cartella. (Va bene anche la cartella che la contiene.)",
+        "chooseFolder": "Scegli la cartella…",
+        "githubIntro": "Questo archivio è il repository GitHub privato {repo}. Accedi con l'account GitHub che il tuo amico ha invitato, poi unisciti.",
+        "join": "Unisciti all'archivio",
+        "notInvited": "Hai eseguito l'accesso come @{login}, ma questo archivio non è ancora stato condiviso con quell'account. Chiedi al tuo amico di invitare @{login}, poi premi di nuovo Unisciti.",
+        "folderIntroOther": "Questo archivio è una cartella che un amico ha condiviso con te. Tre passaggi:"
+      },
+      "joinedTitle": "«{name}» è stato aggiunto",
+      "joinedText": "Ha una scheda tutta sua in File ▸ Sfoglia progetti. Salvaci una scrivania con Scrivania ▸ Salva in un archivio privato…",
+      "local": {
+        "title": "Aggiungi una cartella di archivio già presente su questo computer",
+        "intro": "Scegli la cartella di un archivio: una che hai tolto da questo elenco, o una sincronizzata qui da un altro dei tuoi computer. Quale servizio la tiene aggiornata? (Decide cosa viene detto ai tuoi amici quando la condividi.)"
+      }
+    },
+    "browse": {
+      "refresh": "Aggiorna",
+      "openLatest": "Apri la più recente",
+      "revisions": {
+        "one": "{count} versione",
+        "other": "{count} versioni"
+      },
+      "forked": {
+        "one": "{count} persone hanno salvato partendo dalla stessa versione, quindi vengono conservate entrambe.",
+        "other": "{count} persone hanno salvato partendo dalla stessa versione, quindi vengono conservate tutte. Apri quella da cui vuoi continuare."
+      },
+      "latest": "più recente",
+      "otherVersion": "un'altra versione",
+      "someone": "qualcuno",
+      "search": "Cerca in questo archivio",
+      "empty": "Questo archivio è ancora vuoto. Salvaci una scrivania con Scrivania ▸ Salva in un archivio privato…",
+      "openVersion": "Apri la versione del {when} di {who}"
+    },
+    "save": {
+      "intro": "Salva questa scrivania dove gli amici con cui condividi l'archivio possono aprirla e continuare il lavoro.",
+      "store": "Archivio",
+      "saveAs": "Salva come",
+      "asVersion": "Una nuova versione di «{title}»",
+      "asNew": "Un nuovo progetto",
+      "noteLabel": "Che cosa è cambiato? (facoltativo)",
+      "notePlaceholder": "per es. spostato il clock su un 555",
+      "private": "Possono vederlo solo le persone con cui l'archivio è condiviso.",
+      "running": "Ferma il circuito per salvarlo.",
+      "save": "Salva",
+      "saving": "Salvataggio…",
+      "behind": "{who} ha salvato una versione più recente ({when}) dopo quella che hai aperto. Puoi aprire la sua e continuare da lì, oppure salvare la tua accanto: in quel caso vengono conservate entrambe le versioni.",
+      "openTheirs": "Apri la sua",
+      "saveAlongside": "Salva la mia accanto",
+      "savedTitle": "Salvato",
+      "saved": "Salvato in «{store}».",
+      "noStoreTitle": "Ancora nessun archivio privato",
+      "noStore": "Aggiungi prima un archivio privato, in Impostazioni ▸ Galleria ▸ Archivi privati.",
+      "linkLost": "Non è stato possibile leggere ora il progetto da cui viene questa scrivania (offline o non ancora sincronizzato), quindi verrà salvato come nuovo progetto."
+    },
+    "linkCopied": "Link copiato.",
+    "linkHintFolderOther": "Invia questo link a un amico. Gli serve anche la cartella: assicurati che arrivi sul suo computer e che possa salvarci.",
+    "actionFor": "{action}: {name}"
   }
 }

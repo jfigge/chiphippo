@@ -49,6 +49,8 @@ of the same glue logic.
   side of the link for you.
 - **A gallery of circuits** — open designs other people have built straight
   onto your desk, and share your own for review.
+- **Private stores** — keep designs with your friends in a folder you sync or
+  a private GitHub repository, and work on them together, version by version.
 
 ## Table of contents
 
@@ -110,6 +112,9 @@ of the same glue logic.
   schematic or a Digital circuit.
 - [The Gallery](gallery.md) — browsing circuits others have built, opening
   one on your desk, and sharing your own.
+- [Private Stores](private-stores.md) — keeping designs only you and your
+  friends can see, in a folder you sync or a private GitHub repository, and
+  working on them together.
 - [Chip Hippo in the Browser](web.md) — the web version: which browser,
   where your work is kept, and what differs from the desktop app.
 - [Settings](settings.md) — the settings dialog and its options.

@@ -267,6 +267,21 @@ function fakeBridge() {
         ? { ok: true, ...clone(galleryEntries.get(id)) }
         : { ok: false, code: "missing" },
   };
+  // A private store's revisions (the private stores work): main's
+  // `store:open-entry`, keyed `<store>/<entry>/<rev>`.
+  const storeRevs = new Map();
+  const stores = {
+    openEntry: async (store, entry, rev) => {
+      const key = `${store}/${entry}/${rev}`;
+      return storeRevs.has(key)
+        ? {
+            ok: true,
+            ...clone(storeRevs.get(key)),
+            from: { store, entry, rev },
+          }
+        : { ok: false, code: "noAccess" };
+    },
+  };
 
   // What the renderer last told main the native Desktop menu may offer. The
   // tab strip disables the same two items, so a test can hold the two answers
@@ -302,6 +317,7 @@ function fakeBridge() {
       desktop,
       demo,
       gallery,
+      stores,
       chipLibrary,
       settings: { set: async (patch) => Object.assign(settings, patch) },
       menu: {
@@ -335,6 +351,7 @@ function fakeBridge() {
     seedRecent: (filePath) => remember(filePath),
     seedExample: (ref, payload) => examples.set(ref, payload),
     seedGallery: (id, payload) => galleryEntries.set(id, payload),
+    seedStoreRev: (key, payload) => storeRevs.set(key, payload),
   };
 }
 
@@ -2866,7 +2883,7 @@ test("the tab menu IS the Desktop menu, aimed at that tab", async () => {
       "Import Desktop…",
       "Export",
       "—",
-      "Share to Gallery…",
+      "Share To…",
       "—",
       "Desktop Properties…",
       "—",
@@ -2972,7 +2989,7 @@ test("running the circuit freezes the strip's destructive items", async () => {
     .map((i) => i.textContent.trim());
   assert.deepEqual(disabled, [
     "Duplicate Desktop",
-    "Share to Gallery…",
+    "Share To…",
     "Delete Desktop",
   ]);
 });
@@ -3584,6 +3601,35 @@ test("a gallery design arrives as a new desktop, clean, and a second ask switche
   await settle();
   assert.deepEqual(h.strip(), ["Desktop 1", "NAND bench"]);
   assert.equal(h.workspace.activeTab.name, "NAND bench");
+});
+
+test("a store revision lands as a gallery design does, remembers where it came from, and its link is kept", async () => {
+  const h = await harness();
+  const ref = { store: "s-0123456789abcdef", entry: "led-chaser-3fa9c1", rev: "20261122T100000Z-0123456789" }; // prettier-ignore
+  h.seedStoreRev(`${ref.store}/${ref.entry}/${ref.rev}`, { name: "LED chaser", description: "", doc: someDesign("bb7"), customChips: [] }); // prettier-ignore
+  assert.equal(await h.workspace.openStoreEntry(ref), "added");
+  await settle();
+  const tab = h.workspace.activeTab.id;
+  assert.deepEqual(h.workspace.storeFromOf(tab), ref);
+  assert.equal(h.workspace.dirty, false, "looking at one is not work to keep");
+  assert.equal(await h.workspace.openStoreEntry(ref), "switched");
+  // A save moves the link on to the revision it wrote — a change to keep.
+  const next = { ...ref, rev: "20261122T110000Z-abcdefabcd" };
+  h.workspace.setStoreFrom(tab, next);
+  assert.deepEqual(h.workspace.storeFromOf(tab), next);
+  assert.equal(h.workspace.dirty, true);
+  // The revision it was opened as, asked for again, is opened afresh — the
+  // edited desktop is no longer it.
+  const tabs = h.strip().length;
+  assert.equal(await h.workspace.openStoreEntry(ref), "added");
+  assert.equal(h.strip().length, tabs + 1);
+  await h.workspace.selectTab(tab);
+  await settle();
+  h.workspace.setStoreFrom(tab, { store: "junk" });
+  assert.equal(h.workspace.storeFromOf(tab), null, "junk unlinks it");
+  // Not shared with you: said, nothing added.
+  assert.equal(await h.workspace.openStoreEntry({ ...ref, rev: "20261122T120000Z-0000000000" }), null); // prettier-ignore
+  closePopup();
 });
 
 test("an entry is found again by its id, never by a name another desktop shares", async () => {

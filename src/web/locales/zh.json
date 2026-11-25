@@ -56,7 +56,7 @@
       "exportDigital": "Digital 电路…",
       "properties": "桌面属性…",
       "delete": "删除桌面",
-      "share": "分享到图库…"
+      "share": "分享…"
     },
     "edit": {
       "title": "编辑",
@@ -120,6 +120,14 @@
     },
     "exportDigital": {
       "title": "导出到 Digital"
+    },
+    "storeCreate": {
+      "title": "设计库的文件夹放在哪里？",
+      "button": "在这里创建设计库"
+    },
+    "storeJoin": {
+      "title": "选择共享文件夹",
+      "button": "使用此文件夹"
     }
   },
   "toolbar": {
@@ -393,7 +401,7 @@
     },
     "gallery": {
       "access": "图库访问",
-      "accessHint": "Chip Hippo 是否可以读取 chiphippo.com/gallery 上的图库：设计列表、设计图片，以及打开时的设计。不会发送你的任何内容。首次浏览图库时询问。",
+      "accessHint": "是否允许 Chip Hippo 读取 chiphippo.com/gallery 上的图库:设计列表、它们的图片,以及你打开的设计。不会发送你的任何内容。只有此项为“是”时,文件 ▸ 浏览项目 中才会显示“图库”标签页。",
       "share": "分享同意",
       "shareHint": "向图库分享设计时，是显示将发布的内容并先询问（询问）、用一行显示（是），还是关闭（否）。",
       "shares": "你的分享",
@@ -414,7 +422,12 @@
       "remove": "从此列表中移除“{title}”",
       "yes": "是",
       "no": "否",
-      "ask": "询问"
+      "ask": "询问",
+      "tab": {
+        "public": "公开",
+        "private": "私人"
+      },
+      "tabsLabel": "图库"
     }
   },
   "palette": {
@@ -2946,6 +2959,10 @@
         "refused": "此处无法分享。",
         "unavailable": "无法连接到图库。请检查连接后重试。"
       }
+    },
+    "shareTo": {
+      "title": "分享",
+      "where": "分享到"
     }
   },
   "browse": {
@@ -2965,11 +2982,242 @@
         "other": "{count} 个桌面"
       },
       "remove": "从最近使用的项目中移除 {name}"
-    },
-    "access": {
-      "title": "图库访问已关闭",
-      "message": "图库是 chiphippo.com 上的电路合集。Chip Hippo 在从那里读取任何内容之前都会先询问。",
-      "allow": "允许…"
     }
+  },
+  "stores": {
+    "title": "私人设计库",
+    "hint": "保存只有你和你选择的朋友才能看到的设计，并一起修改。设计库放在你同步的文件夹（Google Drive、Dropbox、OneDrive、iCloud Drive）或私有 GitHub 仓库中——Chip Hippo 不为它运行任何服务器。",
+    "add": "添加设计库…",
+    "empty": "还没有私人设计库。",
+    "copyLink": "复制链接",
+    "copied": "已复制",
+    "linkLabel": "设计库的链接",
+    "linkHintFolder": "把这个链接发给朋友。他们还需要文件夹本身：请先在 {app} 中把文件夹共享给他们。",
+    "linkHintGitHub": "把这个链接发给朋友。请先邀请他们的 GitHub 账号，这样设计库才会让他们进入。",
+    "invite": "邀请",
+    "peopleOnGitHub": "在 GitHub 上管理谁有访问权限",
+    "browseStore": "浏览",
+    "showFolder": "显示文件夹",
+    "showRepo": "在 GitHub 上打开",
+    "remove": "移除",
+    "removeAsk": "要从这台电脑移除“{name}”吗？不会删除任何内容：设计库及其中的设计都留在原处，你和所有共享者仍可使用，你也可以通过它的链接重新添加。",
+    "removeConfirm": "从这台电脑移除",
+    "signOut": "退出登录",
+    "back": "返回",
+    "done": "完成",
+    "whereFolder": "{app} · {path}",
+    "whereGitHub": "GitHub · {repo}",
+    "repoDescription": "共享的 Chip Hippo 设计",
+    "error": {
+      "missing": "找不到该设计库。它的文件夹可能已被移动，或者还没有同步到这台电脑。",
+      "noAccess": "此设计库没有与你共享（或者已不存在）。",
+      "signedOut": "请重新登录 GitHub 以访问此设计库。",
+      "rateLimited": "GitHub 要求 Chip Hippo 放慢速度。请等几分钟后再试。",
+      "wrongStore": "该文件夹中的设计库不是链接所指的那个。",
+      "ambiguous": "该文件夹中有不止一个设计库。请选择设计库自己的文件夹。",
+      "notStore": "该仓库中没有 Chip Hippo 设计库。",
+      "behind": "有人先保存了更新的版本。",
+      "newer": "此设计库由更新版本的 Chip Hippo 创建。请更新 Chip Hippo 后再保存到其中。",
+      "full": "这台电脑上的设计库数量已达上限。请先移除一个。",
+      "denied": "Chip Hippo 无权写入该文件夹。",
+      "tooBig": "此设计太大，无法存入设计库。",
+      "romTooBig": "此设计的 ROM 内容太大，无法存入设计库。",
+      "invalid": "按现在的内容无法保存。请检查标题和你的名字。",
+      "noUser": "GitHub 上没有这个名字的账号。",
+      "nameTaken": "你的 GitHub 账号已有同名仓库。请换一个名字。",
+      "notPrivate": "GitHub 把仓库设为了公开，因此 Chip Hippo 没有使用它。请检查你的 GitHub 账号设置。",
+      "notConfigured": "此版本的 Chip Hippo 暂不支持 GitHub 设计库。",
+      "noKeychain": "这台电脑没有可以安全保存 GitHub 登录信息的地方，因此 Chip Hippo 无法保持登录。",
+      "notInvited": "此设计库还没有与你的 GitHub 账号共享。",
+      "notSynced": "该文件夹中没有此设计库。如果它刚刚才与你共享，可能仍在同步；请等一分钟后再试。",
+      "signInDenied": "GitHub 登录没有完成。请重试。",
+      "cancelled": "登录已取消。",
+      "unavailable": "操作没有成功。请检查网络连接，然后重试。",
+      "badFolder": "请为设计库输入文件夹名,例如 chiphippo。请使用字母、数字、点、连字符和下划线,文件夹之间用 / 分隔。",
+      "badLink": "这不是一个完整的 Chip Hippo 设计库链接。请从消息中复制整个链接后重试。",
+      "badLogin": "这不是 GitHub 用户名。用户名由字母、数字和连字符组成。",
+      "pickPublic": "该仓库是公开的:把设计库放在里面会公开每一个设计。请选择一个私有仓库。",
+      "storePublic": "这个设计库的仓库是公开的,保存在那里的内容任何人都能看到。必须是私有仓库 Chip Hippo 才会使用,请让所有者把它设为私有。",
+      "noPush": "你的 GitHub 账号只能读取该仓库,无法在其中保存设计。",
+      "moved": "这个设计库的仓库在 GitHub 上被重命名或移动了。请向所有者要一个新链接。",
+      "tooLarge": "该仓库太大,GitHub 无法一次列出。请把设计库放在单独的文件夹中。",
+      "alreadyAdded": "这台电脑已经有这个设计库,保存在别处。要从这里添加,请先移除列表中的那个。"
+    },
+    "setup": {
+      "linkCardTitle": "添加私人设计库",
+      "startTitle": "添加私人设计库",
+      "startIntro": "私人设计库保存只有你和与你共享它的朋友才能看到的设计。每个人都可以打开、修改设计并保存新版本。它放在你已经在用的服务上——请选择一个：",
+      "choice": {
+        "folder": {
+          "title": "你同步的文件夹",
+          "text": "Google Drive、Dropbox、OneDrive、iCloud Drive 或任何共享文件夹。无需登录。"
+        },
+        "github": {
+          "title": "GitHub",
+          "text": "一个免费的私有仓库:由 Chip Hippo 为你新建,或使用你已有的仓库。用 GitHub 用户名邀请朋友。"
+        },
+        "link": {
+          "title": "我有朋友发来的链接",
+          "text": "加入别人与你共享的设计库。"
+        },
+        "local": {
+          "title": "这台电脑上已有的设计库文件夹",
+          "text": "恢复已有设计库的本地位置。"
+        }
+      },
+      "nameLabel": "设计库名称",
+      "namePlaceholder": "例如：电子制作社",
+      "browse": "显示其中的设计",
+      "provider": {
+        "gdrive": "Google Drive",
+        "dropbox": "Dropbox",
+        "onedrive": "OneDrive",
+        "icloud": "iCloud Drive",
+        "other": "其他同步文件夹"
+      },
+      "folder": {
+        "title": "在同步文件夹中创建设计库",
+        "intro": "Chip Hippo 会在你的云服务跨电脑同步的文件夹里，为设计库新建一个文件夹。由该服务把它共享给你的朋友；Chip Hippo 只负责读写其中的设计。",
+        "provider": "哪个服务？",
+        "noApp": "这台电脑上还没有它的应用？",
+        "getApp": "获取 {app}",
+        "where": {
+          "gdrive": "安装 Google Drive for desktop 并登录。然后，当 Chip Hippo 询问位置时，选择“我的云端硬盘”（或其中的某个文件夹）。",
+          "dropbox": "安装 Dropbox 应用并登录。然后，当 Chip Hippo 询问位置时，选择你的 Dropbox 文件夹（或其中的某个文件夹）。",
+          "onedrive": "安装 OneDrive 并登录。然后，当 Chip Hippo 询问位置时，选择你的 OneDrive 文件夹（或其中的某个文件夹）。",
+          "icloud": "在这台 Mac 上打开 iCloud Drive。然后，当 Chip Hippo 询问位置时，选择 iCloud Drive（或其中的某个文件夹）。你的朋友也需要 iCloud Drive。",
+          "other": "任何与朋友电脑保持同步的文件夹都可以——Syncthing、共享网络驱动器或其他同步服务。"
+        },
+        "choose": "选择位置…",
+        "madeTitle": "“{name}”已就绪",
+        "madeWhere": "它的文件夹是 {path}。",
+        "share": {
+          "gdrive": "在 Google Drive 中把这个新文件夹共享给朋友（右键点击它 ▸ 共享），并给予他们“编辑者”权限。",
+          "dropbox": "在 Dropbox 中把这个新文件夹共享给朋友，并允许他们编辑。",
+          "onedrive": "在 OneDrive 中把这个新文件夹共享给朋友，并允许他们编辑。",
+          "icloud": "在 Finder 中把这个新文件夹共享给朋友（右键点击它 ▸ 共享），并允许他们进行更改。",
+          "other": "确保这个新文件夹能同步到朋友的电脑上，并且他们可以写入。"
+        },
+        "howToShare": "如何共享文件夹",
+        "sendLink": "把这个链接发给你的朋友。他们打开后，Chip Hippo 会一步步引导他们添加设计库。",
+        "friendSees": "链接只说明是哪个设计库、放在哪里——不含密码，也没有任何隐私信息。只有你共享了文件夹的人才能打开其中的设计。"
+      },
+      "github": {
+        "title": "在 GitHub 上创建设计库",
+        "intro": "Chip Hippo 会在你的 GitHub 账号上创建一个私有仓库来保存设计，并邀请你指定的朋友。GitHub 是免费的；你的朋友也需要一个免费账号。",
+        "signInWhy": "首先，登录 GitHub。你会在 GitHub 自己的页面上输入一个简短的代码——Chip Hippo 永远看不到你的密码。",
+        "noAccount": "没有 GitHub 账号？",
+        "signUp": "免费注册一个",
+        "signIn": "登录 GitHub",
+        "typeCode": "在 GitHub 的页面上输入此代码，然后批准 Chip Hippo：",
+        "copyAndOpen": "复制代码并打开 GitHub",
+        "waiting": "正在等待 GitHub… 批准后请回到这里。",
+        "signedIn": "已登录 GitHub。",
+        "signedInAs": "已以 @{login} 身份登录 GitHub。",
+        "private": "此仓库是私有的：只有你和你邀请的人能看到。Chip Hippo 会向 GitHub 申请访问你的私有仓库，这是它访问此仓库的唯一方式。",
+        "make": "创建设计库",
+        "making": "正在创建…",
+        "madeWhere": "它位于私有仓库 {repo} 中。",
+        "sendLink": "然后把这个链接发给他们。他们打开后，Chip Hippo 会帮他们登录并代为接受邀请。",
+        "friendSees": "链接只说明是哪个设计库——不含密码，也没有任何隐私信息。只有你邀请的账号才能打开其中的设计。",
+        "where": "设计库放在哪里?",
+        "whereNew": "一个新的私有仓库",
+        "whereExisting": "我已有仓库中的一个文件夹",
+        "repo": "仓库",
+        "repoLoading": "正在加载你的仓库…",
+        "repoNone": "没有找到你可以写入的私有仓库。公开仓库不会列出:把设计库放在公开仓库里会公开每一个设计。",
+        "privateOnly": "只列出你可以写入的私有仓库:把设计库放在公开仓库里会公开每一个设计。",
+        "folder": "仓库中的文件夹",
+        "folderHint": "设计库的文件放在这个文件夹中,与仓库里的其他内容分开。如果该文件夹已经是一个 Chip Hippo 设计库,则添加那个设计库。",
+        "repoRetry": "重试"
+      },
+      "invite": {
+        "intro": "通过 GitHub 用户名邀请朋友：",
+        "label": "朋友的 GitHub 用户名",
+        "placeholder": "对方的用户名",
+        "invite": "邀请",
+        "pending": "已邀请——等待对方接受"
+      },
+      "link": {
+        "title": "加入朋友的设计库",
+        "intro": "粘贴朋友发给你的链接：",
+        "label": "设计库的链接",
+        "placeholder": "https://chiphippo.com/store/#…",
+        "next": "下一步",
+        "bad": "这不是 Chip Hippo 设计库的链接。请从朋友的消息中复制完整的链接，然后重试。"
+      },
+      "join": {
+        "title": "加入“{name}”",
+        "folderIntro": "此设计库是你的朋友在 {app} 中与你共享的文件夹。共三步：",
+        "accept": {
+          "gdrive": "打开 Google Drive 发来的邮件，并打开共享文件夹。",
+          "dropbox": "打开 Dropbox 发来的邮件，并把共享文件夹添加到你的 Dropbox。",
+          "onedrive": "打开 OneDrive 发来的邮件，并打开共享文件夹。",
+          "icloud": "打开朋友发来的 iCloud Drive 邀请并接受。",
+          "other": "确保朋友的文件夹已经同步到这台电脑。"
+        },
+        "sync": {
+          "gdrive": "在 Google Drive 中把它添加到你的云端硬盘：右键点击文件夹 ▸ 整理 ▸ 添加快捷方式，然后选择“我的云端硬盘”。这台电脑上必须安装 Google Drive for desktop。",
+          "dropbox": "确认这台电脑上的 Dropbox 应用已经同步了它。",
+          "onedrive": "在 OneDrive 中，对该文件夹选择“将快捷方式添加到我的文件”，让它同步到这台电脑。",
+          "icloud": "它会出现在这台 Mac 的 iCloud Drive 中，名称是朋友给它起的名字。",
+          "other": "它应该位于这台电脑上一个与朋友的文件夹保持同步的文件夹中。"
+        },
+        "pick": "选择那个文件夹。（选择它的上一级文件夹也可以。）",
+        "chooseFolder": "选择文件夹…",
+        "githubIntro": "此设计库是私有 GitHub 仓库 {repo}。请用朋友邀请的 GitHub 账号登录，然后加入。",
+        "join": "加入设计库",
+        "notInvited": "你已以 @{login} 身份登录，但此设计库还没有与该账号共享。请让朋友邀请 @{login}，然后再次点击“加入”。",
+        "folderIntroOther": "这个设计库是朋友与你共享的一个文件夹。共三步:"
+      },
+      "joinedTitle": "已添加“{name}”",
+      "joinedText": "它在 文件 ▸ 浏览项目 中有自己的标签页。用 桌面 ▸ 保存到私人设计库… 保存一个桌面。",
+      "local": {
+        "title": "添加这台电脑上已有的设计库文件夹",
+        "intro": "选择一个设计库的文件夹:你从此列表中移除的,或从你的另一台电脑同步过来的。它由哪个服务同步?(这决定了分享时告诉朋友的内容。)"
+      }
+    },
+    "browse": {
+      "refresh": "刷新",
+      "openLatest": "打开最新版本",
+      "revisions": {
+        "one": "{count} 个版本",
+        "other": "{count} 个版本"
+      },
+      "forked": {
+        "one": "{count} 个人基于同一版本进行了保存，因此每个版本都已保留。请打开你想继续使用的那个。",
+        "other": "{count} 个人基于同一版本进行了保存，因此每个版本都已保留。请打开你想继续使用的那个。"
+      },
+      "latest": "最新",
+      "otherVersion": "另一个版本",
+      "someone": "某人",
+      "search": "搜索此设计库",
+      "empty": "此设计库还没有内容。用 桌面 ▸ 保存到私人设计库… 保存一个桌面。",
+      "openVersion": "打开 {who} 于 {when} 保存的版本"
+    },
+    "save": {
+      "intro": "保存此桌面，让与你共享设计库的朋友可以打开它并接着做。",
+      "store": "设计库",
+      "saveAs": "保存为",
+      "asVersion": "“{title}”的新版本",
+      "asNew": "新设计",
+      "noteLabel": "改了什么？（可选）",
+      "notePlaceholder": "例如：把时钟换成了 555",
+      "private": "只有与此设计库共享的人才能看到它。",
+      "running": "请先停止电路再保存。",
+      "save": "保存",
+      "saving": "正在保存…",
+      "behind": "在你打开的版本之后，{who} 保存了一个更新的版本（{when}）。你可以打开对方的版本并在其基础上继续，或者把你的版本并排保存——这样两个版本都会保留。",
+      "openTheirs": "打开对方的版本",
+      "saveAlongside": "并排保存我的版本",
+      "savedTitle": "已保存",
+      "saved": "已保存到“{store}”。",
+      "noStoreTitle": "还没有私人设计库",
+      "noStore": "请先在 设置 ▸ 图库 ▸ 私人设计库 中添加一个私人设计库。",
+      "linkLost": "暂时无法读取这个桌面来源的设计(离线或尚未同步),因此将保存为一个新设计。"
+    },
+    "linkCopied": "链接已复制。",
+    "linkHintFolderOther": "把这个链接发给朋友。他们还需要这个文件夹本身:请确保它能到达他们的电脑,并且他们可以在其中保存。",
+    "actionFor": "{action}:{name}"
   }
 }

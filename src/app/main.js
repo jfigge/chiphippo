@@ -63,7 +63,7 @@ const { keepUnreadSlot, bootKeepingSlot } = require("./boot-slot");
 const i18n = require("./i18n");
 const updater = require("./updater");
 const { allowsDonations, selfUpdates, distribution } = require("./store-build");
-const { CredentialStore } = require("./store/credential-store");
+const { AI_PROVIDERS, CredentialStore } = require("./store/credential-store");
 const { BookmarkStore } = require("./store/bookmark-store");
 const aiClient = require("./ai/client");
 const aiProviders = require("./ai/providers");
@@ -87,6 +87,10 @@ const datasheetDownload = require("./datasheets/download");
 const { DATASHEET_SOURCES } = require("./datasheets/sources");
 const { registerSerialIpc } = require("./ipc/serial");
 const { registerExportIpc } = require("./ipc/export");
+const { registerStoresIpc } = require("./ipc/stores");
+const { sanitizeStores, storeGrants } = require("./stores/registry");
+const { DESK_DOC_VERSION } = require("./store/migrations");
+const { STORE_ID_RE } = require("../web/scripts/stores/store-format.js");
 const { reseatImages } = require("./store/project-images");
 const { floatPlacement } = require("../web/scripts/model/float-placement.js");
 // The File and Desktop actions, stated once for the menu bar, the toolbar's
@@ -467,7 +471,9 @@ function recentProjects() {
  */
 function pruneBookmarks(recent) {
   const dir = datasheetSetting();
-  getBookmarks().prune([...(recent ?? []), ...(dir ? [dir] : [])]);
+  // …and the folders the private stores live in (ipc/stores.js).
+  const stores = storeGrants(safeCall("stores:list", () => sanitizeStores(getSettingsStore().get().stores), [])); // prettier-ignore
+  getBookmarks().prune([...(recent ?? []), ...(dir ? [dir] : []), ...stores]);
 }
 
 /** Move `filePath` to the head of the MRU list. Returns the new list. */
@@ -1694,8 +1700,17 @@ function galleryAnswer(read) {
   return gate.galleryAnswer(allowed, allowed ? galleryWhere() : null, read);
 }
 
-/** The Browse window's two tabs; anything else opens the first. */
-const BROWSE_TABS = Object.freeze(["recent", "gallery"]);
+/** The Browse window's tabs; anything else opens the first. The Stores tab
+    (the private stores) may name a store, "stores:<id>". */
+const BROWSE_TABS = Object.freeze(["recent", "gallery", "stores"]);
+
+/** A Browse tab as asked for, held to the tabs there are (and a store id to
+    its shape). */
+function browseTab(tab) {
+  const [base, sub] = String(tab ?? "").split(":");
+  const which = BROWSE_TABS.includes(base) ? base : BROWSE_TABS[0];
+  return which === "stores" && STORE_ID_RE.test(sub ?? "") ? `stores:${sub}` : which; // prettier-ignore
+}
 
 /**
  * File ▸ Browse Projects… (and the File pill's Browse segment): the ONE Browse
@@ -1704,12 +1719,12 @@ const BROWSE_TABS = Object.freeze(["recent", "gallery"]);
  * leave it alone (closeAuxWindows).
  *
  * It opens whatever the Gallery access answer: the Recent tab never touches
- * the network, and every gallery read is still checked by `galleryAnswer`, so
- * a Gallery tab without access shows the question instead of the grid.
+ * the network, the Gallery tab is there only while access is on, and every
+ * gallery read is still checked by `galleryAnswer`.
  * Already open, it is brought forward and told which tab to show.
  */
 function openGalleryWindow(tab = "recent") {
-  const which = BROWSE_TABS.includes(tab) ? tab : BROWSE_TABS[0];
+  const which = browseTab(tab);
   if (galleryWindow && !galleryWindow.isDestroyed()) {
     galleryWindow.webContents.send("browse:tab", which);
     galleryWindow.show();
@@ -1760,20 +1775,6 @@ function requestRecentOpen(filePath) {
   mainWindow.show();
   mainWindow.focus();
   sendToMain("menu:project-open-recent", filePath);
-  return true;
-}
-
-/**
- * The Browse window's Gallery tab, asked for without access: the app window
- * asks the Gallery access question (components/gallery-open.js), since it is
- * the one that saves the answer — and then reopens the tab.
- */
-function requestGalleryAccess() {
-  if (!mainWindow || mainWindow.isDestroyed()) return false;
-  if (mainWindow.isMinimized()) mainWindow.restore();
-  mainWindow.show();
-  mainWindow.focus();
-  sendToMain("browse:ask-access");
   return true;
 }
 
@@ -1845,28 +1846,40 @@ function withinMs(promise, ms) {
  */
 async function captureProjectThumb({ path: filePath, rect, desktops } = {}) {
   if (!gate.onRecentList(filePath, recentProjects())) return false;
-  const wc = mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null; // prettier-ignore
-  if (typeof wc?.capturePage !== "function") return false;
-  const box = ["x", "y", "width", "height"].map((k) => Number(rect?.[k]));
-  if (box.some((n) => !Number.isFinite(n)) || box[2] < 8 || box[3] < 8) {
-    return false;
-  }
   try {
-    // The rect is in CSS pixels; a zoomed page draws them larger.
-    const zoom = wc.getZoomFactor?.() ?? 1;
-    const [x, y, width, height] = box.map((n) => Math.round(n * zoom));
-    let image = await wc.capturePage({ x, y, width, height });
-    if (image.isEmpty()) return false;
-    if (image.getSize().width > THUMB_WIDTH) {
-      image = image.resize({ width: THUMB_WIDTH, quality: "good" });
-    }
-    return thumbStore.writeThumb(thumbsDir(), filePath, image.toPNG(), {
+    const png = await captureBoardPng(rect);
+    if (!png) return false;
+    return thumbStore.writeThumb(thumbsDir(), filePath, png, {
       desktops: Number(desktops),
     });
   } catch (err) {
     console.error("[main] project:thumb:capture failed:", err);
     return false;
   }
+}
+
+/**
+ * A PNG of `rect` — a box in the app window's CSS pixels — at most
+ * THUMB_WIDTH wide, or null (no window, a box too small, a blank capture).
+ * A recent project's picture (above) and a private store revision's
+ * (ipc/stores.js) are both taken by it.
+ */
+async function captureBoardPng(rect) {
+  const wc = mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null; // prettier-ignore
+  if (typeof wc?.capturePage !== "function") return null;
+  const box = ["x", "y", "width", "height"].map((k) => Number(rect?.[k]));
+  if (box.some((n) => !Number.isFinite(n)) || box[2] < 8 || box[3] < 8) {
+    return null;
+  }
+  // The rect is in CSS pixels; a zoomed page draws them larger.
+  const zoom = wc.getZoomFactor?.() ?? 1;
+  const [x, y, width, height] = box.map((n) => Math.round(n * zoom));
+  let image = await wc.capturePage({ x, y, width, height });
+  if (image.isEmpty()) return null;
+  if (image.getSize().width > THUMB_WIDTH) {
+    image = image.resize({ width: THUMB_WIDTH, quality: "good" });
+  }
+  return image.toPNG();
 }
 
 /** A recent project's picture is this wide (it is drawn at most ~360). */
@@ -2349,7 +2362,13 @@ function buildAppMenu() {
   });
   const desktopItems = menuActions.toElectronTemplate(
     menuActions.DESKTOP_ACTIONS,
-    { label: actionLabel, send: sendToMain },
+    {
+      label: actionLabel,
+      send: sendToMain,
+      features: features(),
+      // The private stores never in the web build (ipc/stores.js).
+      web: distribution() === "web",
+    },
   );
 
   const template = [];
@@ -2605,7 +2624,7 @@ function applyEditMenuEnabled() {
  *   · Delete Desktop — off on the last remaining desktop (a project cannot run
  *     out of them);
  *   · Duplicate Desktop — off while the circuit runs (editing is frozen);
- *     Share to Gallery… follows it.
+ *     Share To… follows it.
  *
  * The renderer is the authority, exactly as it is for Undo/Redo: it owns the
  * tab set and the run lock and pushes this whenever either changes.
@@ -2746,6 +2765,32 @@ function registerIpc() {
     m,
     getBookmarks,
     defaultDir: () => app.getPath("documents"),
+  });
+  // The private stores (ipc/stores.js): never in the web build, whose
+  // filesystem is the tab's own.
+  registerStoresIpc({
+    ipcMain,
+    dialog,
+    shell,
+    // Every desktop build; never the web build, whose filesystem is the
+    // tab's own and which has no GitHub sign-in.
+    enabled: () => distribution() !== "web",
+    getMainWindow: () => mainWindow,
+    getBrowseWindow: () => galleryWindow,
+    getSettingsStore,
+    getBookmarks,
+    getCredentialStore,
+    getProjectStore,
+    prepareShare: gate.prepareShare,
+    plainImages,
+    captureRect: (rect) => captureBoardPng(rect),
+    sendToMain,
+    showMainWindow: () => showWindow(),
+    onStoresChanged: () => safeCall("stores:prune-bookmarks", () => pruneBookmarks(recentProjects())), // prettier-ignore
+    m,
+    appVersion: () => resolveAppVersion(),
+    docVersion: DESK_DOC_VERSION,
+    devClientId: isDevLike ? (process.env.CHIPHIPPO_GITHUB_CLIENT_ID ?? null) : null, // prettier-ignore
   });
 
   // Mirrors the bridge's synchronous `platform` value so main stays the
@@ -3065,11 +3110,11 @@ function registerIpc() {
   // reaches the network, and every gallery READ above is still gated.
   ipcMain.handle("gallery:show", (_event, tab) => openGalleryWindow(tab));
   // The Browse window's Recent tab: open one (relayed to the app window, MRU
-  // paths only), and ask the app window for Gallery access.
+  // paths only). Its Gallery tab is there only while access is on, and never
+  // asks for it (Settings ▸ Gallery does).
   ipcMain.handle("browse:open-recent", (_event, filePath) =>
     requestRecentOpen(filePath),
   );
-  ipcMain.handle("browse:ask-access", () => requestGalleryAccess());
   ipcMain.handle("gallery:open", (_event, id) =>
     galleryAllowed() ? requestGalleryImport(id) : false,
   );
@@ -3191,7 +3236,9 @@ function registerIpc() {
   const storedKeyFor = (config) => {
     const store = getCredentialStore();
     const providerId = config?.provider;
-    if (!store.get(providerId)) return { apiKey: "" };
+    if (!AI_PROVIDERS.includes(providerId) || !store.get(providerId)) {
+      return { apiKey: "" };
+    }
     if (!store.originOf(providerId)) {
       store.bind(providerId, configuredOrigin(aiAtLaunch, providerId));
     }
@@ -3209,8 +3256,11 @@ function registerIpc() {
       },
     };
   };
+  // Only an AI provider's key: credential-store also holds a private store's
+  // GitHub sign-in (`github`), which is main's alone to write or clear.
+  const aiProvider = (providerId) => AI_PROVIDERS.includes(providerId);
   ipcMain.handle("ai:key:set", (event, providerId, key) =>
-    fromAiWindow(event)
+    fromAiWindow(event) && aiProvider(providerId)
       ? getCredentialStore().set(providerId, key, {
           origin: configuredOrigin(
             safeCall("ai:key:set:settings", () => getSettingsStore().get().ai, null), // prettier-ignore
@@ -3220,10 +3270,14 @@ function registerIpc() {
       : refusedAi,
   );
   ipcMain.handle("ai:key:clear", (event, providerId) =>
-    fromAiWindow(event) ? getCredentialStore().clear(providerId) : refusedAi,
+    fromAiWindow(event) && aiProvider(providerId)
+      ? getCredentialStore().clear(providerId)
+      : refusedAi,
   );
   ipcMain.handle("ai:key:status", (_event, providerId) =>
-    getCredentialStore().status(providerId),
+    aiProvider(providerId)
+      ? getCredentialStore().status(providerId)
+      : { configured: false, encryptionAvailable: false },
   );
   // Begin a generation. Returns a request id immediately; the answer streams
   // back as one-way `ai:delta` pushes and lands with `ai:done`, so a long
@@ -3823,7 +3877,11 @@ function handOver(request) {
 function deliverOpen(request) {
   if (request.kind === "link") {
     const link = parseDeepLink(request.url);
-    if (link) sendToMain("gallery:link", { id: link.id });
+    if (link?.kind === "gallery") sendToMain("gallery:link", { id: link.id });
+    // A private store's share link: the Add Store guide, filled in.
+    else if (link?.kind === "store" && distribution() !== "web") {
+      sendToMain("store:link", { ref: link.ref });
+    }
     return;
   }
   const resolved = path.resolve(request.path);

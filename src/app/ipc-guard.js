@@ -59,9 +59,15 @@ const AUX_CHANNELS = Object.freeze({
     "gallery:open",
     "gallery:report",
     "browse:open-recent",
-    "browse:ask-access",
     "project:recent:details",
     "project:recent:remove",
+    // The Private Stores tab (the private stores, ipc/stores.js — which
+    // checks the window again itself): reading, and Open relayed.
+    "store:status",
+    "store:list",
+    "store:view",
+    "store:thumb",
+    "store:open",
   ]),
   serialLog: new Set([
     "serial:log:read",

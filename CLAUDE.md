@@ -94,6 +94,10 @@ secondary click on any File-pill segment, a tab's menu and the "+"; File ▸ Bro
 Projects… (⇧⌘B, the pill's grid segment) opens one window of Recent Projects (pictures of
 their boards, `app/store/thumb-store.js`) | Gallery — Help ▸ Browse Gallery… is gone (see
 `.claude/rules/ui-chrome.md` → "Application menu", `.claude/rules/gallery.md` → Phase 3).
+**Private stores** (2026-11-22, no feature number; the `stores` flag removed the same day): private
+galleries the user keeps in a folder they sync (Google Drive, Dropbox, OneDrive, iCloud)
+or a private GitHub repository, shared with friends by one link; append-only revisions,
+forks asked about, an Add Store guide (see `.claude/rules/stores.md`).
 **Data buses** (2026-10-22, no feature number): an 8-bit bench stimulus — up to 7 Data buses (one colour each) on the
 signal rail, eight flags set Z/0/1 by clicking their places on the card, a third element kind
 beside Output/Input that is never serial (see `.claude/rules/serial.md` → "Data buses").
@@ -182,8 +186,9 @@ steps through it while the circuit runs (plan `features/done/custom-chip-designe
     bookmarks for MAS), `recent-files.js` (pure list arithmetic).
   - `ai/` (`providers.js` + `client.js`), `datasheets/` (`sources.js` + `download.js`),
     `updater.js`, `gallery/` (`sources.js` + `client.js` — reading chiphippo.com/gallery
-    — and `share.js` — Share to Gallery's POST to share.chiphippo.com) — **the app's
-    only outbound network calls**, all in main (the renderer's CSP forbids one), all the
+    — and `share.js` — Share to Gallery's POST to share.chiphippo.com), `stores/`
+    (`sources.js` + `github.js` — a GitHub private store, api.github.com and github.com
+    only, once the user adds one) — **the app's only outbound network calls**, all in main (the renderer's CSP forbids one), all the
     same shape (a hard-coded statement of where they may go beside the thing that goes
     there), and all **opt-in** (the gallery behind Settings ▸ Gallery's access question,
     a share behind its own Share Publicly press), so an unconfigured Chip Hippo never
@@ -365,6 +370,7 @@ means the section of that name in the file below.
 | `.claude/rules/view-3d.md` | "3D view" | 3D view: lazy WebGL, pure scene3d/ builder, models from the desk's own outlines, lamps, gestures |
 | `.claude/rules/web.md` | "The web build" | The web distribution: main bundled into the tab on Electron/Node stand-ins, the in-memory filesystem + IndexedDB, the visitor's files, popups, the Help book (no menu bar), the service worker, release + deploy |
 | `.claude/rules/gallery.md` | "The gallery work" | The gallery work (browsing and sharing): the pure `gallery/` modules (entry format, validator, derive, index), custom chip lineage, the site, Browse Gallery, links, Share to Gallery + the submission service; the retired `gallery` flag |
+| `.claude/rules/stores.md` | "Private stores" | Private stores (desktop only): user-owned folder/GitHub stores, the append-only layout, revisions and forks, the share link, the Add Store guide |
 | `.claude/rules/docs-assets.md` | "App icons" · "Datasheet crops" · "User guide & docs" · "Downloading the datasheets" | User guide & docs (one Markdown → app/website/PDF), Datasheet crops, Downloading the datasheets, App icons |
 | `.claude/rules/release.md` | "Auto-update & the store gate" · "Mac App Store packaging" · "Release signing (the direct-download mac build)" · "Linux packaging" | Auto-update & the store gate, Mac App Store packaging (bookmarks, sandbox), Release signing, Linux packaging |
 

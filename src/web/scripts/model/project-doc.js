@@ -42,6 +42,7 @@ export const PROJECT_VERSION = 5;
 
 /** How long a project or desktop name may be (it suggests a file name). */
 import { tf } from "../i18n.js";
+import { normalizeStoreFrom } from "../stores/store-format.js";
 import { meterForFile } from "./meter-probes.js";
 import { normalizeConnections } from "./serial-connections.js";
 import {
@@ -140,10 +141,19 @@ function breakpointsFor(raw, tabs) {
   return out;
 }
 
-/** A tab record with the omit-when-empty description convention. */
-function makeTab(id, name, description, doc) {
+/** A tab record with the omit-when-empty description convention — and the
+    same for `storeFrom`, the private store revision it was opened from or
+    last saved as (stores/store-format.js `normalizeStoreFrom`). */
+function makeTab(id, name, description, doc, storeFrom = null) {
   const desc = text(description);
-  return { id, name, ...(desc ? { description: desc } : {}), doc };
+  const from = normalizeStoreFrom(storeFrom);
+  return {
+    id,
+    name,
+    ...(desc ? { description: desc } : {}),
+    ...(from ? { storeFrom: from } : {}),
+    doc,
+  };
 }
 
 /**
@@ -166,7 +176,7 @@ export function normalizeProject(raw) {
     const doc = tab.doc;
     if (!id || ids.has(id) || !doc || typeof doc !== "object") continue;
     ids.add(id);
-    tabs.push(makeTab(id, text(tab.name) || id, tab.description, doc));
+    tabs.push(makeTab(id, text(tab.name) || id, tab.description, doc, tab.storeFrom)); // prettier-ignore
   }
   if (tabs.length === 0) return null;
   return {
@@ -283,7 +293,7 @@ function uniqueName(meta, base) {
  *
  * @returns {{meta: object, tab: object}}
  */
-function insertDesktop(meta, { doc, name, description }, at = -1) {
+function insertDesktop(meta, { doc, name, description, storeFrom }, at = -1) {
   const index = mintIndex(meta);
   const tab = makeTab(
     `t${index}`,
@@ -294,6 +304,7 @@ function insertDesktop(meta, { doc, name, description }, at = -1) {
     ),
     description,
     doc,
+    storeFrom,
   );
   const tabs = [...meta.tabs];
   tabs.splice(at < 0 ? tabs.length : at, 0, tab);
@@ -313,8 +324,8 @@ export function addDesktop(meta, doc) {
  * main (fresh ROM guids and backing files), so an import can never share
  * memory with the desktop it came from.
  */
-export function importDesktop(meta, { name, description, doc }) {
-  return insertDesktop(meta, { doc, name, description });
+export function importDesktop(meta, { name, description, doc, storeFrom }) {
+  return insertDesktop(meta, { doc, name, description, storeFrom });
 }
 
 /**
@@ -356,6 +367,21 @@ export function removeDesktop(meta, id) {
       ? tabs[Math.min(index, tabs.length - 1)].id
       : meta.activeTab;
   return { ...meta, tabs, activeTab };
+}
+
+/**
+ * Set (or, with null, clear) the private store revision a desktop is linked
+ * to — what Save to Store… revises next. Unchanged → the same meta.
+ */
+export function setDesktopStoreFrom(meta, id, storeFrom) {
+  const tab = findDesktop(meta, id);
+  if (!tab) return meta;
+  const from = normalizeStoreFrom(storeFrom);
+  const now = tab.storeFrom ?? null;
+  if (JSON.stringify(from) === JSON.stringify(now)) return meta;
+  const { storeFrom: _drop, ...rest } = tab;
+  void _drop;
+  return setDesktopTab(meta, id, from ? { ...rest, storeFrom: from } : rest);
 }
 
 /** Put another desktop on the desk. */
@@ -513,6 +539,7 @@ export function projectForFile(meta) {
       id: tab.id,
       name: tab.name,
       ...(tab.description ? { description: tab.description } : {}),
+      ...(tab.storeFrom ? { storeFrom: tab.storeFrom } : {}),
       doc: meterForFile(tab.doc),
     })),
     // The serial integration's two, omitted while empty so a project that
