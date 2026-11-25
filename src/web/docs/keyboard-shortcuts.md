@@ -30,8 +30,8 @@ Components](components.md#moving-several-parts-at-once) covers moving one.
 | Chord | Action |
 |---|---|
 | click / drag a thing | Select just that thing; dragging moves it — **with its wiring** (wires on what moves come along; one with an end left behind stretches) |
-| drag empty desk | Draw a selection box (a drag can start on a board's bare holes too) — it replaces the selection with everything it encloses **completely**; a click on empty desk clears the selection |
-| click a board | Select the whole board — every strip snapped to it, its parts riding along |
+| drag empty desk | Draw a selection box — it replaces the selection with everything it encloses **completely**; a click on empty desk clears the selection |
+| click / drag a board | Select the whole board — every strip snapped to it, its parts riding along; dragging moves it, and dropping it flush against another board snaps the two together |
 | `Cmd`-click | Add one item to the selection, or take it back out (`Ctrl`-click on Windows/Linux; on a Mac `Ctrl`-click stays the context menu). On empty desk it does nothing |
 | drag any member of a selection | Move the whole selection as one unit — boards, parts and wires — all or nothing |
 | hold `Option` | Pin targeting: only a lead that can move on its own (a wire end, a resistor's or LED's leg, a TO-92 transistor's leg) reacts, its hole ringed red |

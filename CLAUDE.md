@@ -119,8 +119,8 @@ tick on `chiphippo:sim-tick`; clocks to 1 kHz (dropped to 250 Hz 2026-10-09; 500
 1 kHz back 2026-10-10), the timer cap 1 kHz, lamps flat past 25 Hz (see `.claude/rules/simulation.md` → "Batched ticks").
 **Selection & drag model** (2026-10-14, no feature number, from Jason's brief): one
 press rule for every object — a click is a drag that didn't travel; a drag on the
-background (bare desk, or an unselected strip's holes) is the rubber band, selecting by
-full enclosure; ⌘/Ctrl toggles; Option/Alt is pin-targeting (one lead, never additive);
+bare desk is the rubber band, selecting by full enclosure (a press on a strip picks up its
+whole snapped group — 2026-11-24; it used to band); ⌘/Ctrl toggles; Option/Alt is pin-targeting (one lead, never additive);
 pan is Space-drag / Option-drag off a lead / middle button; a board's parts are unlit passengers; a move carries
 the wiring and drops atomically, reusing the landing it showed; Delete takes the whole
 selection; selection changes are undo steps (see `.claude/rules/desk-editing.md` →

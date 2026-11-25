@@ -224,16 +224,16 @@ counts as part of the thing it belongs to: pressing it grabs the whole wire
 or the whole part. (To grab <em>one</em> leg, see <code>Option</code> below.)</li>
 <li><strong>On empty desk</strong> — a drag draws a <strong>selection box</strong>; a click clears the
 selection.</li>
-<li><strong>On a board&#39;s bare holes</strong> — a click selects the <strong>whole board</strong>: every
-strip snapped to it, with everything seated on them riding along. A drag
-there still draws a selection box, so you can start one right across a
-board; the box only takes the board itself when it swallows it whole.</li>
-<li><strong>On a selected board&#39;s bare holes</strong> — that drags the selection, board and
-all.</li>
+<li><strong>On a board&#39;s bare holes</strong> — you&#39;ve picked up the <strong>whole board</strong>: every
+strip snapped to it, with everything seated on them riding along. A click
+selects it; a drag moves it, so sliding one breadboard up against another
+to snap them together is a single drag. If the board is already part of a
+bigger selection, the drag carries the whole selection.</li>
 </ul>
 <h3 id="several-things-at-once">Several things at once</h3>
 <ul>
-<li><strong>Drag a box</strong> from empty desk (or a board&#39;s holes). It <em>replaces</em> the
+<li><strong>Drag a box</strong> from empty desk — a drag that starts on a board moves the
+board instead, so start beside it. It <em>replaces</em> the
 selection with everything it encloses <strong>completely</strong> — a part only when its
 whole body is inside, a wire only when both ends (and every bend) are, a
 board only when the whole strip is. Anything the box merely grazes is left
@@ -320,11 +320,12 @@ undo history, so a misclick that threw away a careful selection is one
 frozen, so a selection would be one you couldn&#39;t act on. (Clicking a wire still
 highlights it, to trace where it runs.)</p>
 <h2 id="groups--breaking-a-snap">Groups &amp; breaking a snap</h2>
-<p>Moving a selected board moves exactly the strips that are selected.
-<code>Cmd/Ctrl</code>-clicking a board selects its whole snapped group, so the kit moves
-as one, just like a real breadboard&#39;s rails stay attached to its pin-board.</p>
+<p>Dragging a board, or <code>Cmd/Ctrl</code>-clicking it, takes its whole snapped group,
+so the kit moves as one, just like a real breadboard&#39;s rails stay attached to
+its pin-board. Moving a <em>selection</em> moves exactly the strips that are in it.</p>
 <p>To <strong>pull a strip off</strong> its group, select just that strip: draw a box around
-the pin-board (and its parts) but not the rail beside it, then drag. The strip
+the pin-board (and its parts) but not the rail beside it — starting the box
+on empty desk — then drag the selected strip. The strip
 peels away from the rail left behind, and every wire running between them
 <strong>stretches</strong> across the new gap — the connection survives the separation.
 When you drop it, both the piece you moved and what&#39;s left of the group are

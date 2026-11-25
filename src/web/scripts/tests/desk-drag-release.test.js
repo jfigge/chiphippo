@@ -145,7 +145,7 @@ test("board drag: the drop is the landing the last move SHOWED, never re-resolve
   assert.equal(doc.getBoard("bb1").x, 5);
 });
 
-test("board drag: an unselected strip is BACKGROUND — the press rubber-bands, nothing moves", () => {
+test("board drag: an unselected strip is picked up by the press — the drop is the one shown", () => {
   resetDom();
   const doc = new DeskDoc(null);
   doc.addBoard("pins-full", 0, 0);
@@ -158,8 +158,12 @@ test("board drag: an unselected strip is BACKGROUND — the press rubber-bands, 
     at: { x: 8, y: 0 },
   });
 
-  assert.equal(doc.getBoard("bb1").x, 0, "the board stayed put");
-  assert.deepEqual(controller.multiSelectedBoardIds, [], "nothing enclosed");
+  assert.equal(
+    doc.getBoard("bb1").x,
+    5,
+    "the board moved, to the shown landing",
+  );
+  assert.equal(controller.selectedId, "bb1", "and is the selection");
 });
 
 test("board drag: a release over the bare desk still drops the board", () => {

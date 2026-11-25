@@ -119,7 +119,13 @@ paths:
   and the passengers that simply translate go into a `desk-drag-carry` wrapper in their
   layer — or, when most of the layer rides, everything ELSE goes into a still sibling
   (`desk-drag-still`) and the layer itself is transformed; every element's place is
-  recorded and given back at the drop (and on any cancel). A passenger whose drawing
+  recorded and given back at the drop (and on any cancel). **So a drag that carries strips
+  takes its pointer capture on the VIEWPORT, never on a strip** (2026-11-24): moving a
+  captured element to another parent makes Chromium drop the capture, `lostpointercapture`
+  ended the gesture as a cancel on its first frame, and from 2026-10-27 no board could be
+  dragged on any desk with a second board (one kit alone transforms the layer and moves
+  nothing, which is why it hid). jsdom never drops a capture, so
+  `desk-controller.test.js`'s `emulateCaptureLoss` stands in for the browser. A passenger whose drawing
   depends on what is not moving (a lead reaching a still strip) and every member are still
   placed per frame. The signal flags and Output/Input/Data tags PLANTED on a moving strip
   are previewed by the same delta (`stripFlags`, read at the press; 2026-10-27) — their
@@ -258,12 +264,17 @@ for the viewport's own chrome, which is left alone).
 
 - **Four jobs, one combination** (Shift is no chord of its own — it only makes a part drag
   BARE; see "Moving parts and clusters"):
-  - **Plain, on the BACKGROUND** — the bare desk, or the bare holes of a strip that is
-    NOT selected — starts the rubber band (`#beginMarquee`; the band only appears after the
-    threshold). A click on bare desk clears the selection; **a click on a strip's holes
-    selects the WHOLE BOARD** — `selectBoard`, the single board pick that stands for the
-    strip's whole snapped group, its parts riding as passengers (Jason, 2026-10-14). Only
-    the DRAG from an unselected strip is a band; the click is the board.
+  - **Plain, on the BACKGROUND** — the BARE DESK only — starts the rubber band
+    (`#beginMarquee`; the band only appears after the threshold). A click there clears the
+    selection.
+  - **A strip is an OBJECT** (2026-11-24, answering the 2026-10-14 question: with two
+    boards the unselected one could not be dragged, so two kits could not be slid together
+    and mated without a click first). A plain press on an unselected strip's holes
+    `selectBoard`s it — the single board pick that stands for its whole snapped group, its
+    parts riding as passengers — and is that group's drag (`#beginGroupDrag`, the board
+    grab with its magnetic mate); a click leaves it selected (`#collapseTo`). The cost,
+    accepted: a band can no longer START on a board, so it is drawn from the bare desk
+    (a Shift-drag-on-a-strip band was offered as the fallback and not taken).
   - **Plain, on an object** selects just it and the press is its drag. A wire's END CAP and
     a routed wire's bend knob sit on holes and are no pointer target, so a press there lands
     on the board beneath — `#press` asks `wireIdNear` / `wirePointNear` first: **the body on

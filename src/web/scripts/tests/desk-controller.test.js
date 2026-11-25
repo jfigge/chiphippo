@@ -862,24 +862,24 @@ test("Delete with a SET of leads removes everything they belong to, and ⌘Z bri
   ]);
 });
 
-test("a band can start on the bare HOLES of a board that is not selected", () => {
+test("a band from the bare desk takes what it encloses on a board, not the board", () => {
   resetDom();
   const doc = new DeskDoc(null);
   doc.addBoard("pins-full", 0, 0);
   const world = { x: 0, y: 0 };
-  const { surface, controller } = makeDesk(doc, world);
+  const { viewport, controller } = makeDesk(doc, world);
   const chip = controller.addComponentAt("74LS00", "bb1", "e5"); // cols 5–11
   controller.deselect();
 
-  // A press on the strip itself — holes, not a part — is background.
-  const board = surface.querySelector('[data-board-id="bb1"]');
-  marquee(board, world, { x: 3, y: 3 }, { x: 13, y: 10 });
+  // A board is an object now, so the band starts off it, on the bare desk.
+  marquee(viewport, world, { x: 3, y: -2 }, { x: 13, y: 10 });
   assert.deepEqual(controller.multiSelectedIds, [chip.id]);
   assert.deepEqual(
     controller.multiSelectedBoardIds,
     [],
     "only wholly enclosed",
   );
+  assert.equal(doc.getBoard("bb1").x, 0, "nothing moved");
 });
 
 test("selectAll takes the WHOLE desk — boards, parts and wires alike", () => {
@@ -1475,22 +1475,92 @@ test("placing a kit flush against a board mates it, exactly as a drop does", () 
   assert.equal(doc.groupMembers("bb1").length, 6);
 });
 
-test("an unselected board is background: a press on it bands, nothing moves (Shift changes nothing)", () => {
+test("an unselected board is an object: a press-drag picks up its whole group, Shift too", () => {
   resetDom();
   const doc = new DeskDoc(null);
   const world = { x: 0, y: 0 };
   const { surface, controller } = makeDesk(doc, world);
   controller.addKitAt("full", 0, 0);
-  controller.deselect();
 
+  let y = 0;
   for (const mods of [{}, { shiftKey: true }]) {
+    controller.deselect();
+    y += 30;
     const lit = dragBoard(surface, world, "bb2", 0, 30, mods);
-    assert.deepEqual(lit, []); // no drag set — the board was never grabbed
+    world.x = 0; // the next press starts where this one did
+    world.y = 0;
+    assert.deepEqual(lit, ["bb1", "bb2", "bb3"]); // grabbed on the press
     assert.deepEqual(
       doc.boards.map((b) => b.y),
-      [0, PINS_Y, LOW_RAIL_Y], // nothing moved
+      [y, q(PINS_Y + y), q(LOW_RAIL_Y + y)],
     );
+    assert.equal(controller.selectedId, "bb2", "the board is the selection");
   }
+});
+
+/**
+ * jsdom never drops a pointer capture; Chromium does the moment the captured
+ * element is moved to another parent (and fires `lostpointercapture`, which
+ * every desk gesture treats as a cancel). Emulate that, checked ahead of the
+ * gesture's own window listeners on every move and release. Returns the undo.
+ */
+function emulateCaptureLoss() {
+  const proto = window.Element.prototype;
+  const had = Object.hasOwn(proto, "setPointerCapture");
+  const original = proto.setPointerCapture;
+  let held = null;
+  proto.setPointerCapture = function (pointerId) {
+    held = { el: this, parent: this.parentNode, pointerId };
+  };
+  const check = () => {
+    if (!held || held.el.parentNode === held.parent) return;
+    const { el, pointerId } = held;
+    held = null;
+    el.dispatchEvent(
+      new window.PointerEvent("lostpointercapture", { pointerId }),
+    );
+  };
+  window.addEventListener("pointermove", check, true);
+  window.addEventListener("pointerup", check, true);
+  return () => {
+    if (had) proto.setPointerCapture = original;
+    else delete proto.setPointerCapture;
+    window.removeEventListener("pointermove", check, true);
+    window.removeEventListener("pointerup", check, true);
+  };
+}
+
+test("two boards: the one NOT selected drags straight onto the other and mates", (t) => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  // The bug as the app had it: with a second kit on the desk, fewer strips
+  // ride than stay, so the carry re-houses the moving ones into a wrapper on
+  // the first move — and a capture held on the pressed strip was dropped
+  // there, cancelling every board drag. The capture belongs on the viewport.
+  t.after(emulateCaptureLoss());
+  controller.addKitAt("full", 0, 0); // bb1…bb3
+  controller.addKitAt("full", 0, 60); // bb4…bb6 — the selected one now
+  assert.equal(controller.selectedId, "bb5");
+
+  // Grab the FIRST kit (not selected) and drop it two pitch shy of flush
+  // above the second: one gesture, no click first, and the magnet finishes it.
+  const lit = dragBoard(surface, world, "bb2", 0, q(60 - KIT_H - 2));
+  assert.deepEqual(lit, ["bb1", "bb2", "bb3"]);
+  const top = q(60 - KIT_H);
+  assert.deepEqual(
+    doc.boards.map((b) => b.y),
+    [
+      top,
+      q(top + PINS_Y),
+      q(top + LOW_RAIL_Y),
+      60,
+      q(60 + PINS_Y),
+      q(60 + LOW_RAIL_Y),
+    ],
+  );
+  assert.equal(doc.groupMembers("bb1").length, 6, "the two kits mated");
 });
 
 test("a click anywhere on an unselected board selects the whole board — its snapped group", () => {

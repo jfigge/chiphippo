@@ -152,16 +152,16 @@ What you press decides the rest:
   or the whole part. (To grab *one* leg, see `Option` below.)
 - **On empty desk** — a drag draws a **selection box**; a click clears the
   selection.
-- **On a board's bare holes** — a click selects the **whole board**: every
-  strip snapped to it, with everything seated on them riding along. A drag
-  there still draws a selection box, so you can start one right across a
-  board; the box only takes the board itself when it swallows it whole.
-- **On a selected board's bare holes** — that drags the selection, board and
-  all.
+- **On a board's bare holes** — you've picked up the **whole board**: every
+  strip snapped to it, with everything seated on them riding along. A click
+  selects it; a drag moves it, so sliding one breadboard up against another
+  to snap them together is a single drag. If the board is already part of a
+  bigger selection, the drag carries the whole selection.
 
 ### Several things at once
 
-- **Drag a box** from empty desk (or a board's holes). It *replaces* the
+- **Drag a box** from empty desk — a drag that starts on a board moves the
+  board instead, so start beside it. It *replaces* the
   selection with everything it encloses **completely** — a part only when its
   whole body is inside, a wire only when both ends (and every bend) are, a
   board only when the whole strip is. Anything the box merely grazes is left
@@ -262,12 +262,13 @@ highlights it, to trace where it runs.)
 
 ## Groups & breaking a snap
 
-Moving a selected board moves exactly the strips that are selected.
-`Cmd/Ctrl`-clicking a board selects its whole snapped group, so the kit moves
-as one, just like a real breadboard's rails stay attached to its pin-board.
+Dragging a board, or `Cmd/Ctrl`-clicking it, takes its whole snapped group,
+so the kit moves as one, just like a real breadboard's rails stay attached to
+its pin-board. Moving a *selection* moves exactly the strips that are in it.
 
 To **pull a strip off** its group, select just that strip: draw a box around
-the pin-board (and its parts) but not the rail beside it, then drag. The strip
+the pin-board (and its parts) but not the rail beside it — starting the box
+on empty desk — then drag the selected strip. The strip
 peels away from the rail left behind, and every wire running between them
 **stretches** across the new gap — the connection survives the separation.
 When you drop it, both the piece you moved and what's left of the group are

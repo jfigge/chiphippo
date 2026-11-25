@@ -3860,12 +3860,12 @@ export class DeskController {
   // ── Board gestures ───────────────────────────────────────────────────────
 
   /**
-   * A press on a strip. A board is BACKGROUND to the hand unless it is
-   * selected (CLAUDE.md → "Selection"): its bare holes start the rubber band
-   * (a click there selects the whole board), ⌘/Ctrl-click toggles its snapped
-   * group, and only a strip already IN the selection is grabbed — pressing it
-   * drags the whole selection, everything seated on it riding along. All of
-   * that is `#press`; this only names what was pressed.
+   * A press on a strip. A board is an OBJECT to the hand (CLAUDE.md →
+   * "Selection"): a press anywhere on its holes picks up the whole board —
+   * its snapped group, everything seated on it riding along — so a click
+   * selects it and a drag moves it; a strip already in a multi-object
+   * selection drags the whole selection; ⌘/Ctrl-click toggles its snapped
+   * group. All of that is `#press`; this only names what was pressed.
    */
   #onBoardPointerDown(id, e) {
     if (e.button !== 0) return; // middle = pan (DeskView), right = menu
@@ -4268,15 +4268,16 @@ export class DeskController {
    *     REPLACES the selection; with ⌘/Ctrl too it toggles that lead in or out
    *     of the set instead.
    *   - ⌘/Ctrl: toggle the object pressed in or out; on bare desk, nothing.
-   *   - Plain, on the BACKGROUND — bare desk, or a strip that is not selected
-   *     (its holes count as background): the rubber band. A click on bare
-   *     desk clears; a click on a strip selects its whole snapped group.
+   *   - Plain, on the BACKGROUND — the bare desk: the rubber band. A click
+   *     there clears the selection.
    *   - Plain, on a member of a multi-object selection (anything selected in
    *     its own right, a selected strip's bare holes, or a picked lead's ring):
    *     the whole selection drags as one; a click collapses it to what was
    *     pressed.
    *   - Plain, on anything else — a PASSENGER riding a selected board
-   *     included: it becomes the selection and the press drags it alone.
+   *     included: it becomes the selection and the press drags it alone. A
+   *     strip that is not selected is one of these: its whole snapped group
+   *     becomes the selection and the press drags it (a click selects it).
    *   - Shift is no chord of its own: it rides any of the plain presses
    *     above, and makes the part drag they begin a BARE one (#ridersOf) —
    *     the parts move and their wiring stays where it is.
@@ -4330,11 +4331,8 @@ export class DeskController {
       this.#recordSelection();
       return true;
     }
-    if (
-      !hit ||
-      (hit.kind === "board" && !this.#sel.selectedBoards().has(hit.id))
-    ) {
-      this.#beginMarquee(e, hit?.id ?? null);
+    if (!hit) {
+      this.#beginMarquee(e);
       return true;
     }
     if (this.#inGroup(hit)) {
@@ -4375,8 +4373,14 @@ export class DeskController {
         this.#recordSelection();
         break;
       case "board":
-        // A selected strip outside any group drag — only reachable with a
-        // board picked and nothing else, which #inGroup already takes.
+        // A strip not in the selection is picked up like any object: its
+        // whole snapped group becomes the selection (the single board pick)
+        // and the press drags it — so two boards can be slid together and
+        // mated without a click first. Never travelled, #collapseTo leaves
+        // the board selected, which is the click.
+        this.selectBoard(hit.id);
+        this.#recordSelection();
+        this.#beginGroupDrag(hit, e, world);
         break;
     }
     return true;
@@ -4736,8 +4740,8 @@ export class DeskController {
    * rigidly; one with an end left behind STRETCHES — the moving end follows
    * its part or board to its new hole, the other stays, and no connection is
    * silently broken. That is also how a strip is peeled off its rails: band
-   * the strip and its parts but not the rail, drag, and every wire into the
-   * rail stretches across the new gap.
+   * the strip and its parts but not the rail (from the bare desk beside it),
+   * drag, and every wire into the rail stretches across the new gap.
    */
   #beginGroupDrag(hit, e, world) {
     this.#settleCarry();
@@ -4919,7 +4923,15 @@ export class DeskController {
     for (const id of boardIds) this.#views.get(id)?.setDragSet(true);
     this.#sel.refreshBoardOutline();
     this.#viewport.classList.add("desk-viewport--dragging");
-    this.#mode.teardown = beginPointerGesture(view.element, e.pointerId, {
+    // A drag that carries strips takes the capture on the VIEWPORT, never on
+    // the pressed strip: #beginCarry re-houses the moving strips into a
+    // wrapper on the first move (whenever fewer strips ride than stay — any
+    // desk with a second board), and moving a captured element out of its
+    // parent makes the browser drop the capture — `lostpointercapture`, and
+    // the gesture ended as a cancel on its first frame, so no board could be
+    // dragged on a desk holding two.
+    const captureEl = boardIds.length > 0 ? this.#viewport : view.element;
+    this.#mode.teardown = beginPointerGesture(captureEl, e.pointerId, {
       onMove: this.#onGroupPointerMove,
       onEnd: this.#onGroupPointerUp,
     });
@@ -7080,15 +7092,13 @@ export class DeskController {
   }
 
   /**
-   * A plain press on the BACKGROUND — the bare desk, or the holes of a strip
-   * that is not selected (CLAUDE.md → "Selection"). Dragged, it rubber-bands:
-   * the release REPLACES the selection with everything the band wholly
-   * encloses. Released where it was pressed it is a click: on bare desk that
-   * clears the selection, on a strip (`boardId`) it selects the whole board —
-   * the strip's snapped group, everything seated on it riding as passengers.
-   * The band only appears once the pointer travels.
+   * A plain press on the BACKGROUND — the bare desk (CLAUDE.md →
+   * "Selection"; a strip is an object, picked up by #press). Dragged, it
+   * rubber-bands: the release REPLACES the selection with everything the band
+   * wholly encloses. Released where it was pressed it is a click, which
+   * clears the selection. The band only appears once the pointer travels.
    */
-  #beginMarquee(e, boardId = null) {
+  #beginMarquee(e) {
     this.#hideHover();
     const world = this.#deskView.worldFromEvent(e);
     this.#mode = {
@@ -7098,7 +7108,6 @@ export class DeskController {
       startClientY: e.clientY,
       startWorld: world,
       lastWorld: world,
-      boardId,
       rect: { minX: world.x, minY: world.y, maxX: world.x, maxY: world.y },
       active: false,
       teardown: null,
@@ -7157,11 +7166,8 @@ export class DeskController {
     // A band that spans Run applies no selection into the frozen state.
     if (e.type === "pointercancel" || this.#editingLocked) return;
     if (!m.active) {
-      // A click on a strip picks the board (a single board pick stands for
-      // its whole snapped group); a click on bare desk picks nothing.
-      if (m.boardId && this.#doc.getBoard(m.boardId)) {
-        this.selectBoard(m.boardId);
-      } else this.deselect();
+      // A click on bare desk picks nothing.
+      this.deselect();
       this.#recordSelection();
       return;
     }
